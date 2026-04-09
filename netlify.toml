@@ -1,0 +1,17 @@
+import { CharacterDef } from './constants';
+export type { CharacterDef };
+
+export interface PlayerCharacter extends CharacterDef {
+  level: number;
+  tokens: number;
+}
+
+export interface Quest {
+  id: string;
+  type: 'play_time' | 'destroy_towers' | 'kill_enemies' | 'play_matches' | 'win_matches';
+  target: number;
+  progress: number;
+  rewardTP: number;
+  rewardGold: number;
+  completed: boolean;
+}

@@ -1,0 +1,1799 @@
+import { create } from 'zustand';
+import {
+  AIRSHIP_TYPES,
+  EMOJI_COLLECTION,
+  INITIAL_CHARACTERS,
+  LEAGUES,
+  MAIN_TOWER_TYPES,
+  AirshipTypeId,
+  MainTowerTypeId,
+  STARTER_CHARACTER_IDS,
+  UPGRADE_COSTS,
+} from './constants';
+import { PlayerCharacter, Quest } from './types';
+
+interface GameState {
+  playerName: string;
+  playerId: string;
+  setPlayerName: (name: string) => void;
+  gold: number;
+  tp: number;
+  lp: number;
+  highestLp: number;
+  characters: PlayerCharacter[];
+  quests: Quest[];
+  lastQuestRefresh: number;
+  selectedCharacters: string[];
+  selectedEmojis: string[];
+  pendingTokens: Record<string, number>;
+  leagueRewardClaimed: number[];
+  pendingLeagueBonusTp: number;
+  lastFreeChestClaim: number;
+  sfxEnabled: boolean;
+  musicEnabled: boolean;
+  sfxVolume: number;
+  musicVolume: number;
+  usedPromoCodes: string[];
+  towerLevels: { side: number; main: number };
+  ownedMainTowerTypes: MainTowerTypeId[];
+  selectedMainTowerType: MainTowerTypeId;
+  ownedAirships: AirshipTypeId[];
+  selectedAirship: AirshipTypeId | null;
+  airshipLevels: Record<AirshipTypeId, number>;
+  deckSets: Array<{ slot: number; name: string; characterIds: string[] }>;
+  activeDeckSet: number | null;
+  dailyStreak: number;
+  dailyStreakLastMatchDay: string | null;
+  dailyStreakLastClaimDay: string | null;
+  streakSavers: number;
+  damagePotions: number;
+  speedPotions: number;
+  arrowRainCards: number;
+  fireballCards: number;
+  leagueTrackClaimed: number[];
+  toggleCharacterSelection: (id: string) => void;
+  clearSelectedCharacters: () => void;
+  toggleEmojiSelection: (emoji: string) => void;
+  setAudioSettings: (settings: Partial<Pick<GameState, 'sfxEnabled' | 'musicEnabled' | 'sfxVolume' | 'musicVolume'>>) => void;
+  addGold: (amount: number) => void;
+  addTP: (amount: number) => void;
+  addLP: (amount: number) => void;
+  claimPendingLeagueBonus: () => number;
+  upgradeCharacter: (id: string) => void;
+  upgradeAllByStarPriority: () => { ok: boolean; message: string };
+  addTokens: (id: string, amount: number) => void;
+  grantCharacterAdmin: (id: string) => { ok: boolean; message: string };
+  grantAllCharactersAdmin: () => { ok: boolean; message: string };
+  updateQuestProgress: (type: string, amount: number) => void;
+  checkQuestRefresh: () => void;
+  claimQuest: (id: string) => void;
+  syncUnlockedCharactersByLp: () => void;
+  setLastFreeChestClaim: (timestamp: number) => void;
+  redeemPromoCode: (inputCode: string) => { ok: boolean; message: string };
+  saveDeckSet: (slot: number) => { ok: boolean; message: string };
+  selectDeckSet: (slot: number) => { ok: boolean; message: string };
+  renameDeckSet: (slot: number, name: string) => { ok: boolean; message: string };
+  clearDeckSet: (slot: number) => { ok: boolean; message: string };
+  upgradeTower: (towerType: 'side' | 'main') => { ok: boolean; message: string };
+  buyMainTowerType: (typeId: MainTowerTypeId) => { ok: boolean; message: string };
+  selectMainTowerType: (typeId: MainTowerTypeId) => { ok: boolean; message: string };
+  buyAirship: (typeId: AirshipTypeId) => { ok: boolean; message: string };
+  selectAirship: (typeId: AirshipTypeId) => { ok: boolean; message: string };
+  upgradeAirship: (typeId: AirshipTypeId) => { ok: boolean; message: string };
+  registerBattlePlayed: () => void;
+  claimDailyStreakReward: () => { ok: boolean; message: string; tp?: number; gold?: number };
+  syncDailyStreak: () => void;
+  buyStreakSaver: () => { ok: boolean; message: string };
+  buyDamagePotion: (quantity?: number) => { ok: boolean; message: string };
+  buySpeedPotion: (quantity?: number) => { ok: boolean; message: string };
+  consumeDamagePotion: () => { ok: boolean; message: string };
+  consumeSpeedPotion: () => { ok: boolean; message: string };
+  buyArrowRainCards: (quantity?: number) => { ok: boolean; message: string };
+  buyFireballCards: (quantity?: number) => { ok: boolean; message: string };
+  consumeArrowRainCard: () => { ok: boolean; message: string };
+  consumeFireballCard: () => { ok: boolean; message: string };
+  claimLeagueTrackReward: (leagueIndex: number) => { ok: boolean; message: string; tp?: number; gold?: number };
+  resetAccount: () => void;
+  createLocalBackup: () => Promise<{ ok: boolean; message: string; code?: string }>;
+  restoreLocalBackup: () => Promise<{ ok: boolean; message: string }>;
+  restoreSharedBackup: (backupCode: string) => Promise<{ ok: boolean; message: string }>;
+}
+
+const generateId = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+const generateQuests = (): Quest[] => [
+  { id: 'q1', type: 'play_time', target: 240, progress: 0, rewardTP: 50, rewardGold: 100, completed: false },
+  { id: 'q2', type: 'destroy_towers', target: 3, progress: 0, rewardTP: 40, rewardGold: 80, completed: false },
+  { id: 'q3', type: 'kill_enemies', target: 20, progress: 0, rewardTP: 60, rewardGold: 120, completed: false },
+  { id: 'q4', type: 'play_matches', target: 3, progress: 0, rewardTP: 55, rewardGold: 110, completed: false },
+  { id: 'q5', type: 'win_matches', target: 2, progress: 0, rewardTP: 75, rewardGold: 150, completed: false },
+];
+
+const VALID_PROMO_CODES = ['FLASH ROYALE', 'MIROGAMES'] as const;
+const TRANSFER_SYSTEM_SECRET = 'clash-clone-transfer-v3::mirogames';
+
+const normalizePromoCode = (value: string) => value.trim().toUpperCase().replace(/\s+/g, ' ');
+const MAX_CONSUMABLE_STACK = 999;
+
+const LEAGUE_TRACK_REWARDS = [
+  { tp: 40, gold: 120 },
+  { tp: 55, gold: 170 },
+  { tp: 70, gold: 230 },
+  { tp: 90, gold: 300 },
+  { tp: 115, gold: 380 },
+  { tp: 145, gold: 470 },
+  { tp: 180, gold: 570 },
+  { tp: 220, gold: 700 },
+];
+
+const clampBuyQuantity = (value: number) => {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(999, Math.floor(value)));
+};
+
+const dayKeyFromDate = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const getTodayDayKey = () => dayKeyFromDate(new Date());
+
+const dayDiff = (fromKey: string, toKey: string) => {
+  const from = new Date(`${fromKey}T00:00:00`);
+  const to = new Date(`${toKey}T00:00:00`);
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.floor((to.getTime() - from.getTime()) / msPerDay);
+};
+
+const shiftDayKey = (dayKey: string, diffDays: number) => {
+  const base = new Date(`${dayKey}T00:00:00`);
+  base.setDate(base.getDate() + diffDays);
+  return dayKeyFromDate(base);
+};
+
+type V2VaultRecord = {
+  version: 2;
+  updatedAt: number;
+  payload: string;
+  iv: string;
+  salt: string;
+  recoveryPayload: string;
+  recoveryIv: string;
+  recoverySalt: string;
+  deviceSignature: string;
+};
+
+type LegacyVaultRecord = {
+  updatedAt: number;
+  payload: string;
+};
+
+type TransferPacketV3 = {
+  version: 3;
+  encrypted: boolean;
+  payload: string;
+  iv?: string;
+  salt?: string;
+};
+
+const textEncoder = new TextEncoder();
+
+const encodeBytes = (value: string) => textEncoder.encode(value);
+
+const bytesToBase64 = (bytes: Uint8Array) => {
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+};
+
+const base64ToBytes = (base64: string) => {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+};
+
+const hasWebCrypto = () => typeof crypto !== 'undefined' && !!crypto.subtle;
+
+const deriveAesKey = async (secret: string, salt: Uint8Array) => {
+  const baseKey = await crypto.subtle.importKey('raw', encodeBytes(secret), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: salt as unknown as BufferSource,
+      iterations: 120000,
+      hash: 'SHA-256',
+    },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+};
+
+const encryptPayloadV2 = async (json: string, secret: string) => {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveAesKey(secret, salt);
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encodeBytes(json));
+  return {
+    payload: bytesToBase64(new Uint8Array(cipher)),
+    iv: bytesToBase64(iv),
+    salt: bytesToBase64(salt),
+  };
+};
+
+const decryptPayloadV2 = async (record: { payload: string; iv: string; salt: string }, secret: string) => {
+  const iv = base64ToBytes(record.iv);
+  const salt = base64ToBytes(record.salt);
+  const key = await deriveAesKey(secret, salt);
+  const plainBuffer = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    base64ToBytes(record.payload)
+  );
+  return new TextDecoder().decode(plainBuffer);
+};
+
+const isV2VaultRecord = (record: unknown): record is V2VaultRecord => {
+  if (!record || typeof record !== 'object') return false;
+  const value = record as Partial<V2VaultRecord>;
+  return (
+    value.version === 2 &&
+    typeof value.payload === 'string' &&
+    typeof value.iv === 'string' &&
+    typeof value.salt === 'string' &&
+    typeof value.recoveryPayload === 'string' &&
+    typeof value.recoveryIv === 'string' &&
+    typeof value.recoverySalt === 'string'
+  );
+};
+
+const isLegacyVaultRecord = (record: unknown): record is LegacyVaultRecord => {
+  if (!record || typeof record !== 'object') return false;
+  const value = record as Partial<LegacyVaultRecord>;
+  return typeof value.updatedAt === 'number' && typeof value.payload === 'string';
+};
+
+const toBase64 = (value: string) => btoa(unescape(encodeURIComponent(value)));
+const fromBase64 = (value: string) => decodeURIComponent(escape(atob(value)));
+const toBase64Url = (value: string) => toBase64(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+const fromBase64Url = (value: string) => {
+  const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '==='.slice((normalized.length + 3) % 4);
+  return fromBase64(padded);
+};
+
+const xorString = (value: string, key: string) => {
+  if (!key) return value;
+  let out = '';
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+    out += String.fromCharCode(code);
+  }
+  return out;
+};
+
+const normalizeShareCode = (value: string) => value.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+
+const extractShareCodeCandidates = (rawInput: string) => {
+  const cleaned = normalizeShareCode(rawInput);
+  if (!cleaned) return [] as string[];
+
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const pushCandidate = (value: string) => {
+    const normalized = value.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    candidates.push(normalized);
+  };
+
+  pushCandidate(cleaned);
+  pushCandidate(cleaned.replace(/\s+/g, ''));
+
+  const frbIndex = cleaned.toUpperCase().indexOf('FRB2|');
+  if (frbIndex >= 0) {
+    const frbSlice = cleaned.slice(frbIndex);
+    pushCandidate(frbSlice);
+    pushCandidate(frbSlice.replace(/\s+/g, ''));
+  }
+
+  const dataMatches = cleaned.matchAll(/DATA\s*=\s*([A-Za-z0-9\-_]+)/gi);
+  for (const match of dataMatches) {
+    if (match[1]) pushCandidate(match[1]);
+  }
+
+  const longTokenMatches = cleaned.match(/[A-Za-z0-9\-_]{120,}/g);
+  if (longTokenMatches) {
+    longTokenMatches.forEach((token) => pushCandidate(token));
+  }
+
+  return candidates;
+};
+
+const buildCharacterLevelSignature = (characters: PlayerCharacter[]) =>
+  characters
+    .map((char) => `${char.id}:${Math.max(1, Math.min(8, Math.floor(char.level || 1)))}`)
+    .join(',');
+
+const getLeagueNameByLp = (lp: number) => {
+  const index = getLeagueIndex(lp);
+  return LEAGUES[index]?.name ?? 'Ahsap';
+};
+
+const buildShareCode = (
+  packet: TransferPacketV3,
+  snapshot: {
+    playerName: string;
+    lp: number;
+    tp: number;
+    gold: number;
+    characters: PlayerCharacter[];
+    dailyStreak: number;
+    streakSavers: number;
+    towerLevels: { side: number; main: number };
+  }
+) => {
+  const payload = toBase64Url(JSON.stringify(packet));
+  const encodedName = encodeURIComponent(snapshot.playerName);
+  const encodedLeague = encodeURIComponent(getLeagueNameByLp(snapshot.lp));
+  const chars = buildCharacterLevelSignature(snapshot.characters);
+  const headerParts = [
+    'FRB2',
+    `NAME=${encodedName}`,
+    `LEAGUE=${encodedLeague}`,
+    `LP=${Math.max(0, Math.floor(snapshot.lp))}`,
+    `TP=${Math.max(0, Math.floor(snapshot.tp))}`,
+    `GOLD=${Math.max(0, Math.floor(snapshot.gold))}`,
+    `STREAK=${Math.max(0, Math.floor(snapshot.dailyStreak))}`,
+    `SAVERS=${Math.max(0, Math.floor(snapshot.streakSavers))}`,
+    `TOWER_SIDE=${Math.max(1, Math.min(8, Math.floor(snapshot.towerLevels.side || 1)))}`,
+    `TOWER_MAIN=${Math.max(1, Math.min(8, Math.floor(snapshot.towerLevels.main || 1)))}`,
+    `CHARS=${chars}`,
+  ];
+
+  return `${headerParts.join('|')}|DATA=${payload}`;
+};
+
+const isTransferPacketV3 = (value: unknown): value is TransferPacketV3 => {
+  if (!value || typeof value !== 'object') return false;
+  const packet = value as Partial<TransferPacketV3>;
+  return (
+    packet.version === 3 &&
+    typeof packet.encrypted === 'boolean' &&
+    typeof packet.payload === 'string'
+  );
+};
+
+const parseShareCodePayload = (code: string): { key?: unknown; record?: unknown } | null => {
+  try {
+    const cleaned = normalizeShareCode(code);
+    if (!cleaned) return null;
+
+    if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+      return JSON.parse(cleaned) as { key?: unknown; record?: unknown };
+    }
+
+    const compact = cleaned.replace(/\s+/g, '');
+    if (compact.toUpperCase().startsWith('FRB2|')) {
+      const match = compact.match(/\|DATA=([A-Za-z0-9\-_]+)/i);
+      if (!match?.[1]) return null;
+      const payload = match[1];
+      const decoded = fromBase64Url(payload);
+      return JSON.parse(decoded) as { key?: unknown; record?: unknown };
+    }
+
+    const embeddedData = compact.match(/DATA=([A-Za-z0-9\-_]+)/i);
+    if (embeddedData?.[1]) {
+      const decoded = fromBase64Url(embeddedData[1]);
+      return JSON.parse(decoded) as { key?: unknown; record?: unknown };
+    }
+
+    const decoded = fromBase64Url(compact);
+    return JSON.parse(decoded) as { key?: unknown; record?: unknown };
+  } catch {
+    return null;
+  }
+};
+
+const encryptPayload = (json: string, password: string) => {
+  const payload = toBase64(json);
+  const cipher = xorString(payload, password);
+  return toBase64(cipher);
+};
+
+const decryptPayload = (cipherText: string, password: string) => {
+  const cipher = fromBase64(cipherText);
+  const payload = xorString(cipher, password);
+  return fromBase64(payload);
+};
+
+const getLeagueIndex = (lp: number) => {
+  for (let i = LEAGUES.length - 1; i >= 0; i--) {
+    if (lp >= LEAGUES[i].minLp) return i;
+  }
+  return 0;
+};
+
+const clampTowerLevel = (value: unknown) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, Math.min(8, Math.floor(parsed)));
+};
+
+const normalizeTowerLevels = (input: unknown) => {
+  if (!input || typeof input !== 'object') {
+    return { side: 1, main: 1 };
+  }
+
+  const value = input as { side?: unknown; main?: unknown };
+  return {
+    side: clampTowerLevel(value.side),
+    main: clampTowerLevel(value.main),
+  };
+};
+
+const normalizeDeckSetName = (name: string, fallback: string) => {
+  const cleaned = name.replace(/\s+/g, ' ').trim();
+  return (cleaned || fallback).slice(0, 16);
+};
+
+const normalizeDeckSets = (input: unknown): Array<{ slot: number; name: string; characterIds: string[] }> => {
+  const defaults = Array.from({ length: 5 }, (_, index) => ({
+    slot: index + 1,
+    name: `SET ${index + 1}`,
+    characterIds: [] as string[],
+  }));
+  if (!Array.isArray(input)) return defaults;
+
+  const bySlot = new Map<number, { name: string; characterIds: string[] }>();
+  for (const item of input) {
+    if (!item || typeof item !== 'object') continue;
+    const maybeSlot = Number((item as { slot?: unknown }).slot);
+    const maybeIds = (item as { characterIds?: unknown }).characterIds;
+    const maybeName = (item as { name?: unknown }).name;
+    if (!Number.isInteger(maybeSlot) || maybeSlot < 1 || maybeSlot > 5) continue;
+    if (!Array.isArray(maybeIds)) continue;
+    const cleaned = maybeIds.filter((id): id is string => typeof id === 'string').slice(0, 4);
+    const fallback = `SET ${maybeSlot}`;
+    bySlot.set(maybeSlot, {
+      name: typeof maybeName === 'string' ? normalizeDeckSetName(maybeName, fallback) : fallback,
+      characterIds: cleaned,
+    });
+  }
+
+  return defaults.map((deck) => ({
+    slot: deck.slot,
+    name: bySlot.get(deck.slot)?.name ?? deck.name,
+    characterIds: bySlot.get(deck.slot)?.characterIds ?? [],
+  }));
+};
+
+const normalizeSelectedCharacters = (input: unknown, characters: PlayerCharacter[]) => {
+  const ownedIds = new Set(characters.map((char) => char.id));
+  const source = Array.isArray(input) ? input.filter((id): id is string => typeof id === 'string') : [];
+  const uniqueOwned = Array.from(new Set(source)).filter((id) => ownedIds.has(id)).slice(0, 4);
+
+  if (uniqueOwned.length > 0) return uniqueOwned;
+
+  const starterOwned = STARTER_CHARACTER_IDS.filter((id) => ownedIds.has(id)).slice(0, 4);
+  if (starterOwned.length > 0) return starterOwned;
+
+  return characters.slice(0, 4).map((char) => char.id);
+};
+
+const normalizeSelectedEmojis = (input: unknown) => {
+  const source = Array.isArray(input) ? input.filter((emoji): emoji is string => typeof emoji === 'string') : [];
+  const unique = Array.from(new Set(source)).filter((emoji) => EMOJI_COLLECTION.includes(emoji)).slice(0, 6);
+  return unique.length > 0 ? unique : EMOJI_COLLECTION.slice(0, 6);
+};
+
+const normalizeOwnedMainTowerTypes = (input: unknown): MainTowerTypeId[] => {
+  const allowed = new Set(MAIN_TOWER_TYPES.map((tower) => tower.id));
+  const source = Array.isArray(input) ? input : [];
+  const cleaned = source
+    .filter((value): value is MainTowerTypeId => typeof value === 'string' && allowed.has(value as MainTowerTypeId));
+
+  const unique = Array.from(new Set<MainTowerTypeId>(['arrow', ...cleaned]));
+  return unique;
+};
+
+const normalizeSelectedMainTowerType = (input: unknown, owned: MainTowerTypeId[]): MainTowerTypeId => {
+  if (typeof input !== 'string') return 'arrow';
+  const selected = input as MainTowerTypeId;
+  return owned.includes(selected) ? selected : 'arrow';
+};
+
+const normalizeOwnedAirships = (input: unknown): AirshipTypeId[] => {
+  const allowed = new Set(AIRSHIP_TYPES.map((item) => item.id));
+  const source = Array.isArray(input) ? input : [];
+  return Array.from(
+    new Set(
+      source.filter(
+        (value): value is AirshipTypeId => typeof value === 'string' && allowed.has(value as AirshipTypeId)
+      )
+    )
+  );
+};
+
+const normalizeSelectedAirship = (input: unknown, ownedAirships: AirshipTypeId[]): AirshipTypeId | null => {
+  if (typeof input === 'string' && ownedAirships.includes(input as AirshipTypeId)) {
+    return input as AirshipTypeId;
+  }
+  return ownedAirships[0] ?? null;
+};
+
+const normalizeAirshipLevels = (input: unknown): Record<AirshipTypeId, number> => {
+  const base: Record<AirshipTypeId, number> = { lockdown: 1, boost: 1, heal: 1, reflector: 1, shield: 1 };
+  if (!input || typeof input !== 'object') return base;
+  const source = input as Partial<Record<AirshipTypeId, unknown>>;
+  return {
+    lockdown: Math.max(1, Math.min(8, Number.isFinite(source.lockdown) ? Math.floor(Number(source.lockdown)) : 1)),
+    boost: Math.max(1, Math.min(8, Number.isFinite(source.boost) ? Math.floor(Number(source.boost)) : 1)),
+    heal: Math.max(1, Math.min(8, Number.isFinite(source.heal) ? Math.floor(Number(source.heal)) : 1)),
+    reflector: Math.max(1, Math.min(8, Number.isFinite(source.reflector) ? Math.floor(Number(source.reflector)) : 1)),
+    shield: Math.max(1, Math.min(8, Number.isFinite(source.shield) ? Math.floor(Number(source.shield)) : 1)),
+  };
+};
+
+const buildStarterCharacters = () =>
+  INITIAL_CHARACTERS.filter((char) => STARTER_CHARACTER_IDS.includes(char.id)).map((char) => ({
+    ...char,
+    level: 1,
+    tokens: 0,
+  }));
+
+const snapshotToState = (snapshot: Record<string, unknown>) => {
+  const rawLp = Number.isFinite(snapshot.lp) ? Number(snapshot.lp) : 0;
+  const lpValue = Math.max(0, rawLp);
+  const highestLpRaw = Number.isFinite(snapshot.highestLp)
+    ? Number(snapshot.highestLp)
+    : lpValue;
+  const highestLp = Math.max(lpValue, highestLpRaw);
+
+  const characters = Array.isArray(snapshot.characters) ? (snapshot.characters as PlayerCharacter[]) : [];
+  const selectedCharacters = normalizeSelectedCharacters(snapshot.selectedCharacters, characters);
+  const today = getTodayDayKey();
+  const streakLastMatchDay = typeof snapshot.dailyStreakLastMatchDay === 'string' ? snapshot.dailyStreakLastMatchDay : null;
+  const streakLastClaimDay = typeof snapshot.dailyStreakLastClaimDay === 'string' ? snapshot.dailyStreakLastClaimDay : null;
+  let dailyStreak = Number.isFinite(snapshot.dailyStreak) ? Math.max(0, Number(snapshot.dailyStreak)) : 0;
+  let streakSavers = Number.isFinite(snapshot.streakSavers) ? Math.max(0, Math.floor(Number(snapshot.streakSavers))) : 0;
+  const damagePotions = Number.isFinite(snapshot.damagePotions)
+    ? Math.max(0, Math.min(MAX_CONSUMABLE_STACK, Math.floor(Number(snapshot.damagePotions))))
+    : 0;
+  const speedPotions = Number.isFinite(snapshot.speedPotions)
+    ? Math.max(0, Math.min(MAX_CONSUMABLE_STACK, Math.floor(Number(snapshot.speedPotions))))
+    : 0;
+  const arrowRainCards = Number.isFinite(snapshot.arrowRainCards)
+    ? Math.max(0, Math.min(MAX_CONSUMABLE_STACK, Math.floor(Number(snapshot.arrowRainCards))))
+    : 0;
+  const fireballCards = Number.isFinite(snapshot.fireballCards)
+    ? Math.max(0, Math.min(MAX_CONSUMABLE_STACK, Math.floor(Number(snapshot.fireballCards))))
+    : 0;
+  const ownedMainTowerTypes = normalizeOwnedMainTowerTypes(snapshot.ownedMainTowerTypes);
+  const selectedMainTowerType = normalizeSelectedMainTowerType(snapshot.selectedMainTowerType, ownedMainTowerTypes);
+  const ownedAirships = normalizeOwnedAirships(snapshot.ownedAirships);
+  const selectedAirship = normalizeSelectedAirship(snapshot.selectedAirship, ownedAirships);
+  const airshipLevels = normalizeAirshipLevels(snapshot.airshipLevels);
+  let normalizedLastMatchDay = streakLastMatchDay;
+
+  if (normalizedLastMatchDay) {
+    const missedDays = dayDiff(normalizedLastMatchDay, today);
+    if (missedDays > 1) {
+      const requiredSavers = missedDays - 1;
+      if (streakSavers >= requiredSavers) {
+        streakSavers -= requiredSavers;
+        normalizedLastMatchDay = shiftDayKey(today, -1);
+      } else {
+        dailyStreak = 0;
+      }
+    }
+  }
+
+  return ({
+  playerName:
+    typeof snapshot.playerName === 'string'
+      ? normalizeDeckSetName(snapshot.playerName, 'Oyuncu')
+      : 'Oyuncu',
+  playerId: typeof snapshot.playerId === 'string' ? snapshot.playerId : generateId(),
+  gold: Number.isFinite(snapshot.gold) ? Number(snapshot.gold) : 500,
+  tp: Number.isFinite(snapshot.tp) ? Number(snapshot.tp) : 0,
+  lp: lpValue,
+  highestLp,
+  characters,
+  selectedCharacters,
+  selectedEmojis: normalizeSelectedEmojis(snapshot.selectedEmojis),
+  pendingTokens: snapshot.pendingTokens && typeof snapshot.pendingTokens === 'object'
+    ? snapshot.pendingTokens as Record<string, number>
+    : {},
+  leagueRewardClaimed: Array.isArray(snapshot.leagueRewardClaimed) ? snapshot.leagueRewardClaimed as number[] : [0],
+  pendingLeagueBonusTp: Number.isFinite(snapshot.pendingLeagueBonusTp) ? Number(snapshot.pendingLeagueBonusTp) : 0,
+  lastFreeChestClaim: Number.isFinite(snapshot.lastFreeChestClaim) ? Number(snapshot.lastFreeChestClaim) : 0,
+  quests: Array.isArray(snapshot.quests) ? snapshot.quests as Quest[] : generateQuests(),
+  lastQuestRefresh: Number.isFinite(snapshot.lastQuestRefresh) ? Number(snapshot.lastQuestRefresh) : Date.now(),
+  usedPromoCodes: Array.isArray(snapshot.usedPromoCodes) ? snapshot.usedPromoCodes as string[] : [],
+  towerLevels: normalizeTowerLevels(snapshot.towerLevels),
+  ownedMainTowerTypes,
+  selectedMainTowerType,
+  ownedAirships,
+  selectedAirship,
+  airshipLevels,
+  leagueTrackClaimed: Array.isArray(snapshot.leagueTrackClaimed) ? snapshot.leagueTrackClaimed as number[] : [],
+  deckSets: normalizeDeckSets(snapshot.deckSets),
+  activeDeckSet:
+    typeof snapshot.activeDeckSet === 'number' && snapshot.activeDeckSet >= 1 && snapshot.activeDeckSet <= 5
+      ? snapshot.activeDeckSet
+      : null,
+  dailyStreak,
+  dailyStreakLastMatchDay: normalizedLastMatchDay,
+  dailyStreakLastClaimDay: streakLastClaimDay,
+  streakSavers,
+  damagePotions,
+  speedPotions,
+  arrowRainCards,
+  fireballCards,
+  });
+};
+
+const tryDecryptRecord = async (
+  record: V2VaultRecord | LegacyVaultRecord,
+  secret: string,
+  scopedSecret: string,
+) => {
+  if (isV2VaultRecord(record)) {
+    if (hasWebCrypto()) {
+      try {
+        return await decryptPayloadV2(
+          { payload: record.payload, iv: record.iv, salt: record.salt },
+          scopedSecret,
+        );
+      } catch {
+        // Recovery payload lets the same password work after app/domain migrations.
+        return await decryptPayloadV2(
+          {
+            payload: record.recoveryPayload,
+            iv: record.recoveryIv,
+            salt: record.recoverySalt,
+          },
+          secret,
+        );
+      }
+    }
+
+    try {
+      return decryptPayload(record.payload, scopedSecret);
+    } catch {
+      return decryptPayload(record.recoveryPayload, secret);
+    }
+  }
+
+  return decryptPayload(record.payload, scopedSecret);
+};
+
+export const useGameStore = create<GameState>()(
+  (set, get) => ({
+      playerName: 'Oyuncu',
+      playerId: generateId(),
+      setPlayerName: (name) =>
+        set({
+          // Allow fully clearing the field while typing; fallback is handled on restore/default init paths.
+          playerName: (name ?? '').slice(0, 16),
+        }),
+      gold: 500,
+      tp: 0,
+      lp: 0,
+      highestLp: 0,
+      characters: buildStarterCharacters(),
+      quests: generateQuests(),
+      lastQuestRefresh: Date.now(),
+      selectedCharacters: STARTER_CHARACTER_IDS,
+      selectedEmojis: EMOJI_COLLECTION.slice(0, 6),
+      pendingTokens: {},
+      leagueRewardClaimed: [0],
+      pendingLeagueBonusTp: 0,
+      lastFreeChestClaim: 0,
+      sfxEnabled: true,
+      musicEnabled: true,
+      sfxVolume: 0.6,
+      musicVolume: 0.35,
+      usedPromoCodes: [],
+      towerLevels: { side: 1, main: 1 },
+      ownedMainTowerTypes: ['arrow'],
+      selectedMainTowerType: 'arrow',
+      ownedAirships: [],
+      selectedAirship: null,
+      airshipLevels: { lockdown: 1, boost: 1, heal: 1, reflector: 1, shield: 1 },
+      leagueTrackClaimed: [],
+      deckSets: normalizeDeckSets(null),
+      activeDeckSet: null,
+      dailyStreak: 0,
+      dailyStreakLastMatchDay: null,
+      dailyStreakLastClaimDay: null,
+      streakSavers: 0,
+      damagePotions: 0,
+      speedPotions: 0,
+      arrowRainCards: 0,
+      fireballCards: 0,
+      toggleCharacterSelection: (id) => set(state => {
+        const ownedChar = state.characters.find(c => c.id === id);
+        if (!ownedChar) return state;
+
+        const isSelected = state.selectedCharacters.includes(id);
+        if (isSelected) {
+          return { selectedCharacters: state.selectedCharacters.filter(cid => cid !== id) };
+        } else {
+          if (state.selectedCharacters.length >= 4) return state;
+          return { selectedCharacters: [...state.selectedCharacters, id] };
+        }
+      }),
+      clearSelectedCharacters: () =>
+        set(() => ({
+          selectedCharacters: [],
+          activeDeckSet: null,
+        })),
+      toggleEmojiSelection: (emoji) => set((state) => {
+        if (!EMOJI_COLLECTION.includes(emoji)) return state;
+
+        const isSelected = state.selectedEmojis.includes(emoji);
+        if (isSelected) {
+          return { selectedEmojis: state.selectedEmojis.filter((item) => item !== emoji) };
+        }
+
+        if (state.selectedEmojis.length >= 6) return state;
+        return { selectedEmojis: [...state.selectedEmojis, emoji] };
+      }),
+
+      setAudioSettings: (settings) => set((state) => ({
+        sfxEnabled: settings.sfxEnabled ?? state.sfxEnabled,
+        musicEnabled: settings.musicEnabled ?? state.musicEnabled,
+        sfxVolume: settings.sfxVolume !== undefined ? Math.max(0, Math.min(1, settings.sfxVolume)) : state.sfxVolume,
+        musicVolume: settings.musicVolume !== undefined ? Math.max(0, Math.min(1, settings.musicVolume)) : state.musicVolume,
+      })),
+      
+      addGold: (amount) => set(state => ({ gold: Math.max(0, state.gold + amount) })),
+      addTP: (amount) => set(state => ({ tp: Math.max(0, state.tp + amount) })),
+      addLP: (amount) => set(state => {
+        const nextLp = Math.max(0, state.lp + amount);
+        const nextHighestLp = Math.max(state.highestLp ?? 0, nextLp);
+        return {
+          lp: nextLp,
+          highestLp: nextHighestLp,
+        };
+      }),
+
+      claimPendingLeagueBonus: () => {
+        let claimedAmount = 0;
+        set((state) => {
+          claimedAmount = state.pendingLeagueBonusTp ?? 0;
+          if (claimedAmount <= 0) return state;
+          return {
+            tp: state.tp + claimedAmount,
+            pendingLeagueBonusTp: 0,
+          };
+        });
+        return claimedAmount;
+      },
+      
+      upgradeCharacter: (id) => set(state => {
+        const chars = [...state.characters];
+        const idx = chars.findIndex(c => c.id === id);
+        if (idx === -1) return state;
+        const char = chars[idx];
+      const nextLevel = char.level + 1;
+      if (nextLevel > 8) return state;
+      const cost = UPGRADE_COSTS.find(c => c.nextLevel === nextLevel);
+      if (!cost) return state;
+      if (state.gold >= cost.gold && char.tokens >= cost.tokens) {
+        chars[idx] = { ...char, level: nextLevel, tokens: char.tokens - cost.tokens };
+        return { characters: chars, gold: state.gold - cost.gold };
+      }
+      return state;
+    }),
+
+      upgradeAllByStarPriority: () => {
+        let result = { ok: false, message: 'Yükseltme yapılamadı.' };
+
+        set((state) => {
+          const chars = [...state.characters];
+          let nextGold = state.gold;
+          let upgradedCount = 0;
+          let spentGold = 0;
+
+          const sortedIndexes = chars
+            .map((char, index) => ({ index, stars: char.stars, level: char.level }))
+            .sort((a, b) => b.stars - a.stars || b.level - a.level || a.index - b.index)
+            .map((item) => item.index);
+
+          for (const charIndex of sortedIndexes) {
+            while (true) {
+              const char = chars[charIndex];
+              const nextLevel = char.level + 1;
+              if (nextLevel > 8) break;
+
+              const cost = UPGRADE_COSTS.find((entry) => entry.nextLevel === nextLevel);
+              if (!cost) break;
+              if (nextGold < cost.gold || char.tokens < cost.tokens) break;
+
+              chars[charIndex] = {
+                ...char,
+                level: nextLevel,
+                tokens: char.tokens - cost.tokens,
+              };
+              nextGold -= cost.gold;
+              spentGold += cost.gold;
+              upgradedCount += 1;
+            }
+          }
+
+          if (upgradedCount === 0) {
+            result = { ok: false, message: 'Yükseltme için yeterli altın veya jeton yok.' };
+            return state;
+          }
+
+          result = {
+            ok: true,
+            message: `${upgradedCount} yükseltme yapıldı. ${spentGold} altın harcandı.`,
+          };
+          return { characters: chars, gold: nextGold };
+        });
+
+        return result;
+      },
+      
+    addTokens: (id, amount) => set(state => {
+      const chars = [...state.characters];
+      const pendingTokens = state.pendingTokens ?? {};
+      const idx = chars.findIndex(c => c.id === id);
+      const charDef = INITIAL_CHARACTERS.find(c => c.id === id);
+      if (!charDef) return state;
+
+      if (idx !== -1) {
+        chars[idx] = { ...chars[idx], tokens: chars[idx].tokens + amount };
+        return { characters: chars };
+      }
+
+      return {
+        pendingTokens: {
+          ...pendingTokens,
+          [id]: (pendingTokens[id] ?? 0) + amount,
+        },
+      };
+    }),
+
+      grantCharacterAdmin: (id) => {
+        let result = { ok: false, message: 'Karakter alınamadı.' };
+
+        set((state) => {
+          const characterDef = INITIAL_CHARACTERS.find((char) => char.id === id);
+          if (!characterDef) {
+            result = { ok: false, message: 'Karakter bulunamadı.' };
+            return state;
+          }
+
+          if (state.characters.some((char) => char.id === id)) {
+            result = { ok: false, message: `${characterDef.name} zaten açık.` };
+            return state;
+          }
+
+          const pending = state.pendingTokens ?? {};
+          const bankedTokens = pending[id] ?? 0;
+          const nextPending = { ...pending };
+          if (bankedTokens > 0) delete nextPending[id];
+
+          const nextCharacters = [
+            ...state.characters,
+            { ...characterDef, level: 1, tokens: bankedTokens },
+          ];
+
+          result = { ok: true, message: `${characterDef.name} hesaba eklendi.` };
+          return {
+            characters: nextCharacters,
+            pendingTokens: nextPending,
+          };
+        });
+
+        return result;
+      },
+
+      grantAllCharactersAdmin: () => {
+        let result = { ok: false, message: 'Yeni karakter bulunamadı.' };
+
+        set((state) => {
+          const ownedIds = new Set(state.characters.map((char) => char.id));
+          const pending = { ...(state.pendingTokens ?? {}) };
+          let addedCount = 0;
+
+          const nextCharacters = [...state.characters];
+          for (const characterDef of INITIAL_CHARACTERS) {
+            if (ownedIds.has(characterDef.id)) continue;
+            const bankedTokens = pending[characterDef.id] ?? 0;
+            if (bankedTokens > 0) delete pending[characterDef.id];
+            nextCharacters.push({ ...characterDef, level: 1, tokens: bankedTokens });
+            addedCount += 1;
+          }
+
+          if (addedCount === 0) {
+            result = { ok: false, message: 'Tüm karakterler zaten açık.' };
+            return state;
+          }
+
+          result = { ok: true, message: `${addedCount} karakter hesaba eklendi.` };
+          return {
+            characters: nextCharacters,
+            pendingTokens: pending,
+          };
+        });
+
+        return result;
+      },
+      
+      updateQuestProgress: (type, amount) => set(state => {
+        const quests = state.quests.map(q => {
+          if (q.type === type && !q.completed) {
+            return { ...q, progress: Math.min(q.target, q.progress + amount) };
+          }
+          return q;
+        });
+        return { quests };
+      }),
+      
+      checkQuestRefresh: () => set(state => {
+        const now = Date.now();
+        const TWELVE_HOURS = 12 * 60 * 60 * 1000;
+        if (now - state.lastQuestRefresh > TWELVE_HOURS) {
+          return { quests: generateQuests(), lastQuestRefresh: now };
+        }
+        return state;
+      }),
+      
+      claimQuest: (id) => set(state => {
+        const quest = state.quests.find(q => q.id === id);
+        if (quest && quest.progress >= quest.target && !quest.completed) {
+          const quests = state.quests.map(q => q.id === id ? { ...q, completed: true } : q);
+          return { quests, gold: state.gold + quest.rewardGold, tp: state.tp + quest.rewardTP };
+        }
+        return state;
+      }),
+
+      // LP artık karakteri otomatik açmaz; sadece kasadan düşebilmesi için gereksinimdir.
+      syncUnlockedCharactersByLp: () => set(state => state),
+
+      setLastFreeChestClaim: (timestamp) => set({ lastFreeChestClaim: timestamp })
+      ,
+
+      redeemPromoCode: (inputCode) => {
+        const code = normalizePromoCode(inputCode);
+        let result = { ok: false, message: 'Geçersiz kod.' };
+
+        set((state) => {
+          if (!VALID_PROMO_CODES.includes(code as (typeof VALID_PROMO_CODES)[number])) {
+            result = { ok: false, message: 'Kod geçersiz.' };
+            return state;
+          }
+
+          if (state.usedPromoCodes.includes(code)) {
+            result = { ok: false, message: 'Bu kod daha önce kullanılmış.' };
+            return state;
+          }
+
+          result = { ok: true, message: '+200 TP hesabına eklendi.' };
+          return {
+            tp: state.tp + 200,
+            usedPromoCodes: [...state.usedPromoCodes, code],
+          };
+        });
+
+        return result;
+      },
+
+      saveDeckSet: (slot) => {
+        let result = { ok: false, message: 'Set kaydedilemedi.' };
+
+        set((state) => {
+          if (slot < 1 || slot > 5) {
+            result = { ok: false, message: 'Geçersiz set yuvası.' };
+            return state;
+          }
+
+          if (state.selectedCharacters.length !== 4) {
+            result = { ok: false, message: 'Set kaydetmek için tam 4 karakter seçmelisin.' };
+            return state;
+          }
+
+          const ownedIds = new Set(state.characters.map((char) => char.id));
+          const allOwned = state.selectedCharacters.every((charId) => ownedIds.has(charId));
+          if (!allOwned) {
+            result = { ok: false, message: 'Sadece sahip olduğun karakterleri kaydedebilirsin.' };
+            return state;
+          }
+
+          const nextDeckSets = state.deckSets.map((deck) =>
+            deck.slot === slot ? { ...deck, characterIds: [...state.selectedCharacters] } : deck
+          );
+
+          result = { ok: true, message: `${slot}. set kaydedildi.` };
+          return { deckSets: nextDeckSets, activeDeckSet: slot };
+        });
+
+        return result;
+      },
+
+      selectDeckSet: (slot) => {
+        let result = { ok: false, message: 'Set seçilemedi.' };
+
+        set((state) => {
+          const selectedDeck = state.deckSets.find((deck) => deck.slot === slot);
+          if (!selectedDeck) {
+            result = { ok: false, message: 'Set bulunamadı.' };
+            return state;
+          }
+
+          if (selectedDeck.characterIds.length !== 4) {
+            result = { ok: false, message: 'Bu set boş. Önce kaydetmelisin.' };
+            return state;
+          }
+
+          const ownedIds = new Set(state.characters.map((char) => char.id));
+          const validCharacters = selectedDeck.characterIds.filter((charId) => ownedIds.has(charId));
+
+          if (validCharacters.length !== 4) {
+            result = { ok: false, message: 'Bu setteki bazı karakterlere artık sahip değilsin.' };
+            return state;
+          }
+
+          result = { ok: true, message: `${slot}. set seçildi.` };
+          return { selectedCharacters: validCharacters, activeDeckSet: slot };
+        });
+
+        return result;
+      },
+
+      renameDeckSet: (slot, name) => {
+        let result = { ok: false, message: 'Set adı güncellenemedi.' };
+
+        set((state) => {
+          if (slot < 1 || slot > 5) {
+            result = { ok: false, message: 'Geçersiz set yuvası.' };
+            return state;
+          }
+
+          const normalizedName = normalizeDeckSetName(name, `SET ${slot}`);
+          const nextDeckSets = state.deckSets.map((deck) =>
+            deck.slot === slot ? { ...deck, name: normalizedName } : deck
+          );
+
+          result = { ok: true, message: `${slot}. set adı güncellendi.` };
+          return { deckSets: nextDeckSets };
+        });
+
+        return result;
+      },
+
+      clearDeckSet: (slot) => {
+        let result = { ok: false, message: 'Set temizlenemedi.' };
+
+        set((state) => {
+          if (slot < 1 || slot > 5) {
+            result = { ok: false, message: 'Geçersiz set yuvası.' };
+            return state;
+          }
+
+          const nextDeckSets = state.deckSets.map((deck) =>
+            deck.slot === slot ? { ...deck, characterIds: [] } : deck
+          );
+
+          result = { ok: true, message: `${slot}. set temizlendi.` };
+          return {
+            deckSets: nextDeckSets,
+            activeDeckSet: state.activeDeckSet === slot ? null : state.activeDeckSet,
+          };
+        });
+
+        return result;
+      },
+
+      upgradeTower: (towerType) => {
+        let result = { ok: false, message: 'Kule yükseltilemedi.' };
+
+        set((state) => {
+          const currentLevel = state.towerLevels[towerType];
+          if (currentLevel >= 8) {
+            result = { ok: false, message: 'Bu kule zaten maksimum seviyede.' };
+            return state;
+          }
+
+          const nextLevel = currentLevel + 1;
+          const goldCost = towerType === 'side'
+            ? 500 + (nextLevel - 2) * 250
+            : 1000 + (nextLevel - 2) * 500;
+
+          if (state.gold < goldCost) {
+            result = { ok: false, message: 'Yetersiz altın.' };
+            return state;
+          }
+
+          result = {
+            ok: true,
+            message: `${towerType === 'side' ? 'Yan kuleler' : 'Ana kule'} seviye ${nextLevel} oldu.`,
+          };
+
+          return {
+            gold: state.gold - goldCost,
+            towerLevels: {
+              ...state.towerLevels,
+              [towerType]: nextLevel,
+            },
+          };
+        });
+
+        return result;
+      },
+
+      buyMainTowerType: (typeId) => {
+        let result = { ok: false, message: 'Kule tipi satın alınamadı.' };
+
+        set((state) => {
+          const towerType = MAIN_TOWER_TYPES.find((item) => item.id === typeId);
+          if (!towerType) {
+            result = { ok: false, message: 'Geçersiz kule tipi.' };
+            return state;
+          }
+
+          if (state.ownedMainTowerTypes.includes(typeId)) {
+            result = { ok: false, message: 'Bu kule tipine zaten sahipsin.' };
+            return state;
+          }
+
+          if (state.gold < towerType.cost) {
+            result = { ok: false, message: 'Yetersiz altın.' };
+            return state;
+          }
+
+          result = { ok: true, message: `${towerType.name} satın alındı.` };
+          return {
+            gold: state.gold - towerType.cost,
+            ownedMainTowerTypes: [...state.ownedMainTowerTypes, typeId],
+          };
+        });
+
+        return result;
+      },
+
+      selectMainTowerType: (typeId) => {
+        let result = { ok: false, message: 'Kule tipi seçilemedi.' };
+
+        set((state) => {
+          if (!state.ownedMainTowerTypes.includes(typeId)) {
+            result = { ok: false, message: 'Önce bu kule tipini satın almalısın.' };
+            return state;
+          }
+
+          result = { ok: true, message: 'Ana kule tipi güncellendi.' };
+          return { selectedMainTowerType: typeId };
+        });
+
+        return result;
+      },
+
+      buyAirship: (typeId) => {
+        let result = { ok: false, message: 'Hava saldırısı satın alınamadı.' };
+
+        set((state) => {
+          const airship = AIRSHIP_TYPES.find((item) => item.id === typeId);
+          if (!airship) {
+            result = { ok: false, message: 'Geçersiz gemi tipi.' };
+            return state;
+          }
+
+          if (state.ownedAirships.includes(typeId)) {
+            result = { ok: false, message: 'Bu gemi zaten sende var.' };
+            return state;
+          }
+
+          if (state.gold < airship.cost) {
+            result = { ok: false, message: 'Yetersiz altın.' };
+            return state;
+          }
+
+          result = { ok: true, message: `${airship.name} satın alındı.` };
+          return {
+            gold: state.gold - airship.cost,
+            ownedAirships: [...state.ownedAirships, typeId],
+            selectedAirship: state.selectedAirship ?? typeId,
+          };
+        });
+
+        return result;
+      },
+
+      selectAirship: (typeId) => {
+        let result = { ok: false, message: 'Hava saldırısı seçilemedi.' };
+
+        set((state) => {
+          if (!state.ownedAirships.includes(typeId)) {
+            result = { ok: false, message: 'Önce bu gemiyi satın almalısın.' };
+            return state;
+          }
+
+          result = { ok: true, message: 'Aktif gemi güncellendi.' };
+          return { selectedAirship: typeId };
+        });
+
+        return result;
+      },
+
+      upgradeAirship: (typeId) => {
+        let result = { ok: false, message: 'Gemi yükseltilemedi.' };
+
+        set((state) => {
+          if (!state.ownedAirships.includes(typeId)) {
+            result = { ok: false, message: 'Önce bu gemiyi satın almalısın.' };
+            return state;
+          }
+
+          const currentLevel = state.airshipLevels[typeId] ?? 1;
+          if (currentLevel >= 8) {
+            result = { ok: false, message: 'Bu gemi zaten maksimum seviyede.' };
+            return state;
+          }
+
+          const cost = 900 + (currentLevel - 1) * 450;
+          if (state.gold < cost) {
+            result = { ok: false, message: 'Yetersiz altın.' };
+            return state;
+          }
+
+          const nextLevel = currentLevel + 1;
+          result = { ok: true, message: `Gemi seviye ${nextLevel} oldu.` };
+          return {
+            gold: state.gold - cost,
+            airshipLevels: {
+              ...state.airshipLevels,
+              [typeId]: nextLevel,
+            },
+          };
+        });
+
+        return result;
+      },
+
+      syncDailyStreak: () => set((state) => {
+        const today = getTodayDayKey();
+        if (!state.dailyStreakLastMatchDay) return state;
+        const diffFromLastMatch = dayDiff(state.dailyStreakLastMatchDay, today);
+        if (diffFromLastMatch <= 1) return state;
+
+        const requiredSavers = diffFromLastMatch - 1;
+        if (state.streakSavers >= requiredSavers) {
+          return {
+            streakSavers: state.streakSavers - requiredSavers,
+            dailyStreakLastMatchDay: shiftDayKey(today, -1),
+          };
+        }
+
+        return { dailyStreak: 0 };
+      }),
+
+      registerBattlePlayed: () => set((state) => {
+        const today = getTodayDayKey();
+        const lastDay = state.dailyStreakLastMatchDay;
+
+        if (!lastDay) {
+          return { dailyStreak: 1, dailyStreakLastMatchDay: today };
+        }
+
+        const diff = dayDiff(lastDay, today);
+        if (diff <= 0) {
+          return state;
+        }
+
+        if (diff === 1) {
+          return {
+            dailyStreak: state.dailyStreak + 1,
+            dailyStreakLastMatchDay: today,
+          };
+        }
+
+        return {
+          dailyStreak: 1,
+          dailyStreakLastMatchDay: today,
+        };
+      }),
+
+      claimDailyStreakReward: () => {
+        let result: { ok: boolean; message: string; tp?: number; gold?: number } = {
+          ok: false,
+          message: 'Ödül alınamadı.',
+        };
+
+        set((state) => {
+          const today = getTodayDayKey();
+          if (!state.dailyStreakLastMatchDay || state.dailyStreakLastMatchDay !== today) {
+            result = { ok: false, message: 'Önce bugün bir maç oynamalısın.' };
+            return state;
+          }
+
+          if (state.dailyStreakLastClaimDay === today) {
+            result = { ok: false, message: 'Bugünkü seri ödülünü zaten aldın.' };
+            return state;
+          }
+
+          const tpReward = 90;
+          const goldReward = 300;
+          result = {
+            ok: true,
+            message: 'Seri ödülü alındı.',
+            tp: tpReward,
+            gold: goldReward,
+          };
+
+          return {
+            tp: state.tp + tpReward,
+            gold: state.gold + goldReward,
+            dailyStreakLastClaimDay: today,
+          };
+        });
+
+        return result;
+      },
+
+      buyStreakSaver: () => {
+        let result = { ok: false, message: 'Satın alma başarısız.' };
+
+        set((state) => {
+          const cost = 1000;
+          if (state.gold < cost) {
+            result = { ok: false, message: 'Yetersiz altın.' };
+            return state;
+          }
+
+          result = { ok: true, message: 'Seri kurtarma cihazı satın alındı.' };
+          return {
+            gold: state.gold - cost,
+            streakSavers: state.streakSavers + 1,
+          };
+        });
+
+        return result;
+      },
+
+      buyDamagePotion: (quantity = 1) => {
+        let result = { ok: false, message: 'Satın alma başarısız.' };
+
+        set((state) => {
+          const buyCount = clampBuyQuantity(quantity);
+          if (buyCount <= 0) {
+            result = { ok: false, message: 'Alım adedi en az 1 olmalı.' };
+            return state;
+          }
+
+          const addAmount = buyCount;
+          const nextTotal = state.damagePotions + addAmount;
+          if (nextTotal > MAX_CONSUMABLE_STACK) {
+            result = { ok: false, message: `Hasar iksiri en fazla ${MAX_CONSUMABLE_STACK} olabilir.` };
+            return state;
+          }
+
+          const cost = 450 * buyCount;
+          if (state.gold < cost) {
+            result = { ok: false, message: 'Yetersiz altın.' };
+            return state;
+          }
+
+          result = { ok: true, message: `Hasar iksiri +${addAmount} eklendi.` };
+          return {
+            gold: state.gold - cost,
+            damagePotions: nextTotal,
+          };
+        });
+
+        return result;
+      },
+
+      buySpeedPotion: (quantity = 1) => {
+        let result = { ok: false, message: 'Satın alma başarısız.' };
+
+        set((state) => {
+          const buyCount = clampBuyQuantity(quantity);
+          if (buyCount <= 0) {
+            result = { ok: false, message: 'Alım adedi en az 1 olmalı.' };
+            return state;
+          }
+
+          const addAmount = buyCount;
+          const nextTotal = state.speedPotions + addAmount;
+          if (nextTotal > MAX_CONSUMABLE_STACK) {
+            result = { ok: false, message: `Hız iksiri en fazla ${MAX_CONSUMABLE_STACK} olabilir.` };
+            return state;
+          }
+
+          const cost = 300 * buyCount;
+          if (state.gold < cost) {
+            result = { ok: false, message: 'Yetersiz altın.' };
+            return state;
+          }
+
+          result = { ok: true, message: `Hız iksiri +${addAmount} eklendi.` };
+          return {
+            gold: state.gold - cost,
+            speedPotions: nextTotal,
+          };
+        });
+
+        return result;
+      },
+
+      buyArrowRainCards: (quantity = 1) => {
+        let result = { ok: false, message: 'Satın alma başarısız.' };
+
+        set((state) => {
+          const buyCount = clampBuyQuantity(quantity);
+          if (buyCount <= 0) {
+            result = { ok: false, message: 'Alım adedi en az 1 olmalı.' };
+            return state;
+          }
+
+          const addAmount = buyCount;
+          const nextTotal = state.arrowRainCards + addAmount;
+          if (nextTotal > MAX_CONSUMABLE_STACK) {
+            result = { ok: false, message: `Ok Yağmuru en fazla ${MAX_CONSUMABLE_STACK} olabilir.` };
+            return state;
+          }
+
+          const cost = 10 * buyCount;
+          if (state.gold < cost) {
+            result = { ok: false, message: 'Yetersiz altın.' };
+            return state;
+          }
+
+          result = { ok: true, message: `Ok Yağmuru kartı +${addAmount} eklendi.` };
+          return {
+            gold: state.gold - cost,
+            arrowRainCards: nextTotal,
+          };
+        });
+
+        return result;
+      },
+
+      buyFireballCards: (quantity = 1) => {
+        let result = { ok: false, message: 'Satın alma başarısız.' };
+
+        set((state) => {
+          const buyCount = clampBuyQuantity(quantity);
+          if (buyCount <= 0) {
+            result = { ok: false, message: 'Alım adedi en az 1 olmalı.' };
+            return state;
+          }
+
+          const addAmount = buyCount;
+          const nextTotal = state.fireballCards + addAmount;
+          if (nextTotal > MAX_CONSUMABLE_STACK) {
+            result = { ok: false, message: `Ateş Topu en fazla ${MAX_CONSUMABLE_STACK} olabilir.` };
+            return state;
+          }
+
+          const cost = 20 * buyCount;
+          if (state.gold < cost) {
+            result = { ok: false, message: 'Yetersiz altın.' };
+            return state;
+          }
+
+          result = { ok: true, message: `Ateş Topu kartı +${addAmount} eklendi.` };
+          return {
+            gold: state.gold - cost,
+            fireballCards: nextTotal,
+          };
+        });
+
+        return result;
+      },
+
+      consumeDamagePotion: () => {
+        let result = { ok: false, message: 'Hasar iksiri yok.' };
+
+        set((state) => {
+          if (state.damagePotions <= 0) {
+            result = { ok: false, message: 'Hasar iksiri yok.' };
+            return state;
+          }
+
+          result = { ok: true, message: 'Hasar iksiri aktif.' };
+          return { damagePotions: state.damagePotions - 1 };
+        });
+
+        return result;
+      },
+
+      consumeSpeedPotion: () => {
+        let result = { ok: false, message: 'Hız iksiri yok.' };
+
+        set((state) => {
+          if (state.speedPotions <= 0) {
+            result = { ok: false, message: 'Hız iksiri yok.' };
+            return state;
+          }
+
+          result = { ok: true, message: 'Hız iksiri aktif.' };
+          return { speedPotions: state.speedPotions - 1 };
+        });
+
+        return result;
+      },
+
+      consumeArrowRainCard: () => {
+        let result = { ok: false, message: 'Ok Yağmuru kartı yok.' };
+
+        set((state) => {
+          if (state.arrowRainCards <= 0) {
+            result = { ok: false, message: 'Ok Yağmuru kartı yok.' };
+            return state;
+          }
+
+          result = { ok: true, message: 'Ok Yağmuru hazır.' };
+          return { arrowRainCards: state.arrowRainCards - 1 };
+        });
+
+        return result;
+      },
+
+      consumeFireballCard: () => {
+        let result = { ok: false, message: 'Ateş Topu kartı yok.' };
+
+        set((state) => {
+          if (state.fireballCards <= 0) {
+            result = { ok: false, message: 'Ateş Topu kartı yok.' };
+            return state;
+          }
+
+          result = { ok: true, message: 'Ateş Topu hazır.' };
+          return { fireballCards: state.fireballCards - 1 };
+        });
+
+        return result;
+      },
+
+      claimLeagueTrackReward: (leagueIndex) => {
+        let result: { ok: boolean; message: string; tp?: number; gold?: number } = {
+          ok: false,
+          message: 'Ödül alınamadı.',
+        };
+
+        set((state) => {
+          if (!Number.isInteger(leagueIndex) || leagueIndex < 1 || leagueIndex >= LEAGUES.length) {
+            result = { ok: false, message: 'Geçersiz lig seçimi.' };
+            return state;
+          }
+
+          const unlockedLp = Math.max(state.lp, state.highestLp ?? 0);
+          const requiredLp = LEAGUES[leagueIndex].minLp;
+          if (unlockedLp < requiredLp) {
+            result = { ok: false, message: 'Bu ligin ödülünü almak için önce o lige ulaşmalısın.' };
+            return state;
+          }
+
+          if ((state.leagueTrackClaimed ?? []).includes(leagueIndex)) {
+            result = { ok: false, message: 'Bu lig ödülü zaten alındı.' };
+            return state;
+          }
+
+          const reward = LEAGUE_TRACK_REWARDS[leagueIndex] ?? LEAGUE_TRACK_REWARDS[LEAGUE_TRACK_REWARDS.length - 1];
+          const rewardWithBonus = {
+            tp: reward.tp + 150,
+            gold: reward.gold,
+          };
+          result = {
+            ok: true,
+            message: `${LEAGUES[leagueIndex].name} Ligi ödülü alındı. +${rewardWithBonus.tp} TP, +${rewardWithBonus.gold} Altın`,
+            tp: rewardWithBonus.tp,
+            gold: rewardWithBonus.gold,
+          };
+
+          return {
+            tp: state.tp + rewardWithBonus.tp,
+            gold: state.gold + rewardWithBonus.gold,
+            leagueTrackClaimed: [...(state.leagueTrackClaimed ?? []), leagueIndex],
+          };
+        });
+
+        return result;
+      },
+
+      resetAccount: () => set((state) => ({
+        playerName: state.playerName,
+        playerId: state.playerId,
+        gold: 500,
+        tp: 0,
+        lp: 0,
+        highestLp: 0,
+        characters: buildStarterCharacters(),
+        quests: generateQuests(),
+        lastQuestRefresh: Date.now(),
+        selectedCharacters: [...STARTER_CHARACTER_IDS],
+        selectedEmojis: EMOJI_COLLECTION.slice(0, 6),
+        pendingTokens: {},
+        leagueRewardClaimed: [0],
+        pendingLeagueBonusTp: 0,
+        lastFreeChestClaim: 0,
+        usedPromoCodes: [],
+        towerLevels: { side: 1, main: 1 },
+        ownedMainTowerTypes: ['arrow'],
+        selectedMainTowerType: 'arrow',
+        ownedAirships: [],
+        selectedAirship: null,
+        airshipLevels: { lockdown: 1, boost: 1, heal: 1, reflector: 1, shield: 1 },
+        leagueTrackClaimed: [],
+        deckSets: normalizeDeckSets(null),
+        activeDeckSet: null,
+        dailyStreak: 0,
+        dailyStreakLastMatchDay: null,
+        dailyStreakLastClaimDay: null,
+        streakSavers: 0,
+        damagePotions: 0,
+        speedPotions: 0,
+        arrowRainCards: 0,
+        fireballCards: 0,
+      })),
+
+      createLocalBackup: async () => {
+        const secret = TRANSFER_SYSTEM_SECRET;
+        const state = useGameStore.getState();
+        const snapshot = {
+          version: 1,
+          savedAt: Date.now(),
+          playerName: state.playerName,
+          playerId: state.playerId,
+          gold: state.gold,
+          tp: state.tp,
+          lp: state.lp,
+          highestLp: state.highestLp,
+          characters: state.characters,
+          selectedCharacters: state.selectedCharacters,
+          selectedEmojis: state.selectedEmojis,
+          pendingTokens: state.pendingTokens,
+          leagueRewardClaimed: state.leagueRewardClaimed,
+          pendingLeagueBonusTp: state.pendingLeagueBonusTp,
+          lastFreeChestClaim: state.lastFreeChestClaim,
+          quests: state.quests,
+          lastQuestRefresh: state.lastQuestRefresh,
+          usedPromoCodes: state.usedPromoCodes,
+          towerLevels: state.towerLevels,
+          ownedMainTowerTypes: state.ownedMainTowerTypes,
+          selectedMainTowerType: state.selectedMainTowerType,
+          ownedAirships: state.ownedAirships,
+          selectedAirship: state.selectedAirship,
+          airshipLevels: state.airshipLevels,
+          leagueTrackClaimed: state.leagueTrackClaimed,
+          deckSets: state.deckSets,
+          activeDeckSet: state.activeDeckSet,
+          dailyStreak: state.dailyStreak,
+          dailyStreakLastMatchDay: state.dailyStreakLastMatchDay,
+          dailyStreakLastClaimDay: state.dailyStreakLastClaimDay,
+          streakSavers: state.streakSavers,
+          damagePotions: state.damagePotions,
+          speedPotions: state.speedPotions,
+          arrowRainCards: state.arrowRainCards,
+          fireballCards: state.fireballCards,
+        };
+
+        try {
+          const serialized = JSON.stringify(snapshot);
+
+          const packet: TransferPacketV3 = hasWebCrypto()
+            ? {
+                version: 3,
+                encrypted: true,
+                ...(await encryptPayloadV2(serialized, secret)),
+              }
+            : {
+                version: 3,
+                encrypted: false,
+                payload: encryptPayload(serialized, secret),
+              };
+
+          const shareCode = buildShareCode(packet, {
+            playerName: state.playerName,
+            lp: state.lp,
+            tp: state.tp,
+            gold: state.gold,
+            characters: state.characters,
+            dailyStreak: state.dailyStreak,
+            streakSavers: state.streakSavers,
+            towerLevels: state.towerLevels,
+          });
+
+          return {
+            ok: true,
+            code: shareCode,
+            message: 'Taşıma kodu üretildi. Kodun içinde tüm hesap ilerlemesi bulunur. Kodu kaydedip yeni linkte yükleyebilirsin.',
+          };
+        } catch {
+          return { ok: false, message: 'Kayıt sırasında hata oluştu.' };
+        }
+      },
+
+      restoreLocalBackup: async () => {
+        return { ok: false, message: 'Bu sürümde geri yükleme için taşıma kodu girmen gerekir.' };
+      },
+
+      restoreSharedBackup: async (backupCode: string): Promise<{ ok: boolean; message: string }> => {
+        const candidates = extractShareCodeCandidates(backupCode);
+        if (candidates.length === 0) {
+          return { ok: false, message: 'Yedek kodu boş olamaz.' };
+        }
+
+        try {
+          let parsed: unknown = null;
+          for (const candidate of candidates) {
+            parsed = parseShareCodePayload(candidate);
+            if (parsed) break;
+          }
+
+          if (!parsed) {
+            return { ok: false, message: 'Yedek kodu geçersiz.' };
+          }
+
+          let raw = '';
+          if (isTransferPacketV3(parsed)) {
+            if (parsed.encrypted) {
+              if (!parsed.iv || !parsed.salt) {
+                return { ok: false, message: 'Yedek kodu bozuk.' };
+              }
+              if (hasWebCrypto()) {
+                raw = await decryptPayloadV2(
+                  { payload: parsed.payload, iv: parsed.iv, salt: parsed.salt },
+                  TRANSFER_SYSTEM_SECRET,
+                );
+              } else {
+                return { ok: false, message: 'Bu cihazda güvenli çözme desteklenmiyor.' };
+              }
+            } else {
+              raw = decryptPayload(parsed.payload, TRANSFER_SYSTEM_SECRET);
+            }
+          } else if (
+            typeof parsed === 'object' &&
+            parsed !== null &&
+            'key' in parsed &&
+            'record' in parsed &&
+            typeof (parsed as { key?: unknown }).key === 'string' &&
+            ((isV2VaultRecord((parsed as { record?: unknown }).record)) ||
+              isLegacyVaultRecord((parsed as { record?: unknown }).record))
+          ) {
+            // Legacy format support.
+            raw = await tryDecryptRecord(
+              (parsed as { record: V2VaultRecord | LegacyVaultRecord }).record,
+              TRANSFER_SYSTEM_SECRET,
+              TRANSFER_SYSTEM_SECRET,
+            );
+          } else {
+            return { ok: false, message: 'Yedek kodu bozuk.' };
+          }
+
+          const snapshot = JSON.parse(raw);
+          if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.characters)) {
+            return { ok: false, message: 'Taşıma kodu bozuk veya geçersiz.' };
+          }
+
+          set(() => snapshotToState(snapshot as Record<string, unknown>));
+          get().syncUnlockedCharactersByLp();
+
+          const restoredLp = Number.isFinite((snapshot as { lp?: unknown }).lp)
+            ? Math.max(0, Number((snapshot as { lp?: unknown }).lp))
+            : 0;
+          const restoredTp = Number.isFinite((snapshot as { tp?: unknown }).tp)
+            ? Math.max(0, Number((snapshot as { tp?: unknown }).tp))
+            : 0;
+
+          return {
+            ok: true,
+            message: `Hesap geri yüklendi. Lig/LP/TP, karakterler, seviyeler ve kuleler geri geldi. (LP: ${restoredLp}, TP: ${restoredTp})`,
+          };
+        } catch {
+          return { ok: false, message: 'Yedek kodu okunamadı. Kodu eksiksiz yapıştırdığından emin ol.' };
+        }
+      },
+    })
+);

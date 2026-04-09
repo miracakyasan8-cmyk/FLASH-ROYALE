@@ -1,0 +1,431 @@
+export interface CharacterDef {
+  id: string;
+  name: string;
+  type: 'Yakın Dövüş' | 'Uzak Menzil' | 'Tank' | 'Sıhhiyeci';
+  baseHp: number;
+  baseDamage: number;
+  speed: number;
+  range: number;
+  attackSpeed: number;
+  cost: number;
+  stars: number;
+  reqLp: number;
+  color: string;
+  towerDamageMultiplier?: number;
+  fxTier?: 'basic' | 'special';
+}
+
+export type MainTowerTypeId = 'arrow' | 'freeze' | 'flame' | 'production';
+
+export type AirshipTypeId = 'lockdown' | 'boost' | 'heal' | 'reflector' | 'shield';
+
+export const MAIN_TOWER_TYPES: Array<{
+  id: MainTowerTypeId;
+  name: string;
+  description: string;
+  cost: number;
+}> = [
+  {
+    id: 'arrow',
+    name: 'Okçu Kule',
+    description: 'Dengeli tek hedef hasarı verir.',
+    cost: 0,
+  },
+  {
+    id: 'freeze',
+    name: 'Dondurucu Kule',
+    description: 'Hasarı düşüktür, vurduğu hedefi yavaşlatır.',
+    cost: 2600,
+  },
+  {
+    id: 'flame',
+    name: 'Alev Kulesi',
+    description: 'Aynı hedefte zamanla artan hasar uygular.',
+    cost: 3200,
+  },
+  {
+    id: 'production',
+    name: 'Üretim Kulesi',
+    description: 'Belirli aralıklarla küçük muhafızlar üretir.',
+    cost: 2800,
+  },
+];
+
+export const STARTER_CHARACTER_IDS = ['c1', 'c2', 'c3', 'c4'];
+
+export const getLeague = (lp: number) => {
+  for (let i = LEAGUES.length - 1; i >= 0; i--) {
+    if (lp >= LEAGUES[i].minLp) return LEAGUES[i];
+  }
+  return LEAGUES[0];
+};
+
+export const AIRSHIP_TYPES: Array<{
+  id: AirshipTypeId;
+  name: string;
+  description: string;
+  cost: number;
+  icon: string;
+}> = [
+  {
+    id: 'lockdown',
+    name: 'Lock-Down Gemisi',
+    description: 'Rakip birimleri güçlü şekilde kilitler (gelişmiş sürüm).',
+    cost: 2600,
+    icon: '⛓️',
+  },
+  {
+    id: 'boost',
+    name: 'Boost Gemisi',
+    description: 'Takımına yüksek hasar ve hız desteği sağlar (gelişmiş sürüm).',
+    cost: 3000,
+    icon: '🚀',
+  },
+  {
+    id: 'heal',
+    name: 'Şifa Gemisi',
+    description: 'Sahadaki dost birimlere dengeli toplu şifa verir.',
+    cost: 2800,
+    icon: '💚',
+  },
+  {
+    id: 'reflector',
+    name: 'Reflector Gemisi',
+    description: '10 saniye boyunca alınan hasarın %50\'sini saldırana yansıtır.',
+    cost: 3400,
+    icon: '🛡️',
+  },
+  {
+    id: 'shield',
+    name: 'Kalkan Gemisi',
+    description: 'Tüm dost birimlere mavi kalkan verir. Seviye arttıkça kalkan gücü yükselir.',
+    cost: 3600,
+    icon: '🧿',
+  },
+];
+
+export const LEAGUES = [
+  { name: 'Ahşap', minLp: 0 },
+  { name: 'Taş', minLp: 80 },
+  { name: 'Bakır', minLp: 180 },
+  { name: 'Demir', minLp: 320 },
+  { name: 'Altın', minLp: 520 },
+  { name: 'Elmas', minLp: 760 },
+  { name: 'Zümrüt', minLp: 1040 },
+  { name: 'Obsidyen', minLp: 1360 },
+];
+
+const RAW_CHARACTERS: CharacterDef[] = [
+  // 1 Star - Ahşap (0 LP)
+  { id: 'c1', name: 'Milis', type: 'Yakın Dövüş', baseHp: 860, baseDamage: 72, speed: 46, attackSpeed: 1.2, range: 30, cost: 2, stars: 1, reqLp: 0, color: '#fca5a5' },
+  { id: 'c2', name: 'Sapanlı', type: 'Uzak Menzil', baseHp: 380, baseDamage: 52, speed: 52, attackSpeed: 1.1, range: 125, cost: 2, stars: 1, reqLp: 0, color: '#86efac' },
+  { id: 'c3', name: 'Oduncu', type: 'Yakın Dövüş', baseHp: 980, baseDamage: 96, speed: 42, attackSpeed: 1.45, range: 35, cost: 3, stars: 1, reqLp: 0, color: '#fdba74' },
+
+  // 1 Star - Taş (20 LP)
+  { id: 'c26', name: 'Kalkan Eri', type: 'Tank', baseHp: 1350, baseDamage: 62, speed: 32, attackSpeed: 1.1, range: 28, cost: 3, stars: 1, reqLp: 20, color: '#94a3b8' },
+  { id: 'c27', name: 'Mızrakçı', type: 'Yakın Dövüş', baseHp: 760, baseDamage: 108, speed: 58, attackSpeed: 1.5, range: 46, cost: 3, stars: 1, reqLp: 20, color: '#f59e0b' },
+
+  // 2 Star - Taş (20 LP)
+  { id: 'c4', name: 'Şövalye', type: 'Yakın Dövüş', baseHp: 1280, baseDamage: 104, speed: 41, attackSpeed: 1.5, range: 30, cost: 3, stars: 2, reqLp: 20, color: '#93c5fd' },
+  { id: 'c5', name: 'Okçu', type: 'Uzak Menzil', baseHp: 510, baseDamage: 78, speed: 50, attackSpeed: 1.2, range: 152, cost: 3, stars: 2, reqLp: 20, color: '#34d399' },
+  { id: 'c6', name: 'Acemi Şifacı', type: 'Sıhhiyeci', baseHp: 400, baseDamage: -40, speed: 45, attackSpeed: 2.0, range: 100, cost: 3, stars: 2, reqLp: 20, color: '#f9a8d4' },
+
+  // 2 Star - Bakır (45 LP)
+  { id: 'c7', name: 'Kargı', type: 'Yakın Dövüş', baseHp: 1060, baseDamage: 126, speed: 46, attackSpeed: 1.35, range: 45, cost: 4, stars: 2, reqLp: 45, color: '#fde047' },
+  { id: 'c8', name: 'Barbar', type: 'Yakın Dövüş', baseHp: 1580, baseDamage: 146, speed: 54, attackSpeed: 1.3, range: 35, cost: 4, stars: 2, reqLp: 45, color: '#f87171' },
+  { id: 'c28', name: 'Nişancı', type: 'Uzak Menzil', baseHp: 620, baseDamage: 112, speed: 41, attackSpeed: 1.3, range: 165, cost: 4, stars: 2, reqLp: 45, color: '#0ea5e9' },
+
+  // 3 Star - Demir (80 LP)
+  { id: 'c9', name: 'Dev', type: 'Tank', baseHp: 3200, baseDamage: 132, speed: 26, attackSpeed: 2.4, range: 40, cost: 5, stars: 3, reqLp: 80, color: '#d8b4fe' },
+  { id: 'c10', name: 'Topçu', type: 'Uzak Menzil', baseHp: 680, baseDamage: 170, speed: 32, attackSpeed: 1.9, range: 180, cost: 4, stars: 3, reqLp: 80, color: '#9ca3af' },
+  { id: 'c11', name: 'Suikastçı', type: 'Yakın Dövüş', baseHp: 920, baseDamage: 215, speed: 68, attackSpeed: 1.0, range: 25, cost: 4, stars: 3, reqLp: 80, color: '#cbd5e1' },
+  { id: 'c29', name: 'Balyozcu', type: 'Yakın Dövüş', baseHp: 1860, baseDamage: 170, speed: 34, attackSpeed: 1.2, range: 33, cost: 5, stars: 3, reqLp: 80, color: '#b45309' },
+  
+  // 3 Star - Altın (130 LP)
+  { id: 'c12', name: 'Büyücü', type: 'Uzak Menzil', baseHp: 640, baseDamage: 176, speed: 41, attackSpeed: 1.75, range: 132, cost: 5, stars: 3, reqLp: 130, color: '#60a5fa' },
+  { id: 'c13', name: 'Şövalye Komutanı', type: 'Tank', baseHp: 2650, baseDamage: 162, speed: 35, attackSpeed: 1.6, range: 35, cost: 5, stars: 3, reqLp: 130, color: '#fbbf24' },
+  { id: 'c14', name: 'Rahip', type: 'Sıhhiyeci', baseHp: 600, baseDamage: -80, speed: 40, attackSpeed: 2.0, range: 110, cost: 4, stars: 3, reqLp: 130, color: '#f472b6' },
+  { id: 'c30', name: 'Arbaletçi', type: 'Uzak Menzil', baseHp: 760, baseDamage: 152, speed: 42, attackSpeed: 1.35, range: 170, cost: 5, stars: 3, reqLp: 130, color: '#0891b2' },
+
+  // 4 Star - Elmas (190 LP)
+  { id: 'c15', name: 'Ejderha Süvarisi', type: 'Tank', baseHp: 3600, baseDamage: 190, speed: 48, attackSpeed: 1.8, range: 40, cost: 6, stars: 4, reqLp: 190, color: '#a78bfa' },
+  { id: 'c16', name: 'Buz Büyücüsü', type: 'Uzak Menzil', baseHp: 760, baseDamage: 148, speed: 45, attackSpeed: 1.5, range: 145, cost: 5, stars: 4, reqLp: 190, color: '#38bdf8' },
+  { id: 'c17', name: 'Cellat', type: 'Yakın Dövüş', baseHp: 2120, baseDamage: 270, speed: 39, attackSpeed: 2.0, range: 42, cost: 6, stars: 4, reqLp: 190, color: '#ef4444' },
+  { id: 'c18', name: 'Savaş Arabası', type: 'Tank', baseHp: 4200, baseDamage: 120, speed: 58, attackSpeed: 1.5, range: 35, cost: 6, stars: 4, reqLp: 190, color: '#d1d5db' },
+  { id: 'c31', name: 'Mızrak Lordu', type: 'Yakın Dövüş', baseHp: 1880, baseDamage: 230, speed: 63, attackSpeed: 1.45, range: 48, cost: 6, stars: 4, reqLp: 190, color: '#f97316' },
+
+  // 4 Star - Zümrüt (260 LP)
+  { id: 'c19', name: 'Yüce Şifacı', type: 'Sıhhiyeci', baseHp: 900, baseDamage: -150, speed: 40, attackSpeed: 2.0, range: 120, cost: 5, stars: 4, reqLp: 260, color: '#ec4899' },
+  { id: 'c20', name: 'Golem', type: 'Tank', baseHp: 5200, baseDamage: 230, speed: 22, attackSpeed: 2.7, range: 40, cost: 8, stars: 4, reqLp: 260, color: '#78716c' },
+  { id: 'c21', name: 'Prens', type: 'Yakın Dövüş', baseHp: 2300, baseDamage: 320, speed: 64, attackSpeed: 1.45, range: 35, cost: 6, stars: 4, reqLp: 260, color: '#eab308' },
+  { id: 'c32', name: 'Volkan Topu', type: 'Uzak Menzil', baseHp: 980, baseDamage: 250, speed: 34, attackSpeed: 1.7, range: 185, cost: 7, stars: 4, reqLp: 260, color: '#fb7185' },
+
+  // 5 Star - Obsidyen (340 LP)
+  { id: 'c22', name: 'Karanlık Şövalye', type: 'Yakın Dövüş', baseHp: 3150, baseDamage: 360, speed: 54, attackSpeed: 1.4, range: 40, cost: 7, stars: 5, reqLp: 340, color: '#1f2937' },
+  { id: 'c23', name: 'Alev Ejderhası', type: 'Uzak Menzil', baseHp: 2920, baseDamage: 380, speed: 58, attackSpeed: 1.75, range: 150, cost: 8, stars: 5, reqLp: 340, color: '#b91c1c' },
+  { id: 'c24', name: 'Başbüyücü', type: 'Uzak Menzil', baseHp: 1680, baseDamage: 460, speed: 44, attackSpeed: 1.9, range: 182, cost: 7, stars: 5, reqLp: 340, color: '#4338ca' },
+  { id: 'c25', name: 'Kıyamet Makinesi', type: 'Tank', baseHp: 5600, baseDamage: 250, speed: 28, attackSpeed: 2.3, range: 50, cost: 9, stars: 5, reqLp: 340, color: '#000000' },
+  { id: 'c33', name: 'Fırtına Şampiyonu', type: 'Yakın Dövüş', baseHp: 2600, baseDamage: 335, speed: 72, attackSpeed: 1.35, range: 38, cost: 7, stars: 5, reqLp: 340, color: '#38bdf8' },
+  { id: 'c34', name: 'Balista Ustası', type: 'Uzak Menzil', baseHp: 1850, baseDamage: 345, speed: 40, attackSpeed: 1.6, range: 195, cost: 8, stars: 5, reqLp: 340, color: '#7c3aed' },
+  { id: 'c35', name: 'Titan Muhafız', type: 'Tank', baseHp: 6100, baseDamage: 230, speed: 24, attackSpeed: 2.1, range: 42, cost: 9, stars: 5, reqLp: 340, color: '#475569' },
+
+  // 15 New Characters (non-healer) distributed across all star groups
+  // 1 Star
+  { id: 'c36', name: 'Köylü Muhafız', type: 'Yakın Dövüş', baseHp: 890, baseDamage: 82, speed: 47, attackSpeed: 1.25, range: 32, cost: 2, stars: 1, reqLp: 0, color: '#fca5a5', fxTier: 'special' },
+  { id: 'c37', name: 'Sapan Ustası', type: 'Uzak Menzil', baseHp: 420, baseDamage: 66, speed: 50, attackSpeed: 1.2, range: 132, cost: 2, stars: 1, reqLp: 20, color: '#22d3ee', fxTier: 'special' },
+  { id: 'c38', name: 'Kaya Korucu', type: 'Tank', baseHp: 1480, baseDamage: 72, speed: 31, attackSpeed: 1.0, range: 30, cost: 3, stars: 1, reqLp: 20, color: '#9ca3af', fxTier: 'special' },
+
+  // 2 Star
+  { id: 'c39', name: 'Mızrak Ustası', type: 'Yakın Dövüş', baseHp: 1180, baseDamage: 138, speed: 52, attackSpeed: 1.45, range: 44, cost: 4, stars: 2, reqLp: 45, color: '#fb923c', fxTier: 'special' },
+  { id: 'c40', name: 'Avcı', type: 'Uzak Menzil', baseHp: 580, baseDamage: 94, speed: 44, attackSpeed: 1.25, range: 162, cost: 4, stars: 2, reqLp: 45, color: '#4ade80', fxTier: 'special' },
+  { id: 'c41', name: 'Muhafız Tank', type: 'Tank', baseHp: 2280, baseDamage: 112, speed: 29, attackSpeed: 1.25, range: 34, cost: 5, stars: 2, reqLp: 45, color: '#94a3b8', fxTier: 'special' },
+
+  // 3 Star
+  { id: 'c42', name: 'Kanatlı Baskıncı', type: 'Yakın Dövüş', baseHp: 1520, baseDamage: 186, speed: 60, attackSpeed: 1.35, range: 34, cost: 5, stars: 3, reqLp: 80, color: '#f43f5e', fxTier: 'special' },
+  { id: 'c43', name: 'Keskin Nişancı', type: 'Uzak Menzil', baseHp: 760, baseDamage: 182, speed: 40, attackSpeed: 1.35, range: 186, cost: 5, stars: 3, reqLp: 130, color: '#0ea5e9', fxTier: 'special' },
+  { id: 'c44', name: 'Demir Kalkan', type: 'Tank', baseHp: 3420, baseDamage: 158, speed: 24, attackSpeed: 1.8, range: 36, cost: 6, stars: 3, reqLp: 130, color: '#6b7280', fxTier: 'special' },
+
+  // 4 Star
+  { id: 'c45', name: 'Kara Paladin', type: 'Yakın Dövüş', baseHp: 2380, baseDamage: 274, speed: 47, attackSpeed: 1.5, range: 39, cost: 6, stars: 4, reqLp: 190, color: '#e11d48', fxTier: 'special' },
+  { id: 'c46', name: 'Yıldırım Okçusu', type: 'Uzak Menzil', baseHp: 920, baseDamage: 228, speed: 46, attackSpeed: 1.45, range: 176, cost: 6, stars: 4, reqLp: 260, color: '#38bdf8', fxTier: 'special' },
+  { id: 'c47', name: 'Obur Dev', type: 'Tank', baseHp: 4720, baseDamage: 194, speed: 23, attackSpeed: 2.05, range: 40, cost: 7, stars: 4, reqLp: 260, color: '#a3a3a3', fxTier: 'special' },
+
+  // 5 Star
+  { id: 'c48', name: 'Gölge Bıçak', type: 'Yakın Dövüş', baseHp: 2820, baseDamage: 362, speed: 66, attackSpeed: 1.3, range: 36, cost: 7, stars: 5, reqLp: 340, color: '#4c1d95', fxTier: 'special' },
+  { id: 'c49', name: 'Yıldız Topçusu', type: 'Uzak Menzil', baseHp: 1880, baseDamage: 352, speed: 42, attackSpeed: 1.55, range: 198, cost: 8, stars: 5, reqLp: 340, color: '#6366f1', fxTier: 'special' },
+  { id: 'c50', name: 'Dreadnought', type: 'Tank', baseHp: 6420, baseDamage: 264, speed: 22, attackSpeed: 2.1, range: 44, cost: 9, stars: 5, reqLp: 340, color: '#111827', fxTier: 'special' },
+
+  // 5 New Characters (non-healer) - balanced star distribution
+  // 1 Star
+  { id: 'c51', name: 'Kılıç Eri', type: 'Yakın Dövüş', baseHp: 940, baseDamage: 88, speed: 49, attackSpeed: 1.22, range: 33, cost: 2, stars: 1, reqLp: 0, color: '#fb7185', fxTier: 'special' },
+  { id: 'c52', name: 'Gözcü Okçu', type: 'Uzak Menzil', baseHp: 470, baseDamage: 74, speed: 51, attackSpeed: 1.16, range: 140, cost: 3, stars: 1, reqLp: 20, color: '#22c55e', fxTier: 'special' },
+
+  // 2 Star
+  { id: 'c53', name: 'Demir Akıncı', type: 'Yakın Dövüş', baseHp: 1340, baseDamage: 128, speed: 48, attackSpeed: 1.38, range: 36, cost: 4, stars: 2, reqLp: 45, color: '#f97316', fxTier: 'special' },
+  { id: 'c54', name: 'Çelik Muhafız', type: 'Tank', baseHp: 2380, baseDamage: 118, speed: 30, attackSpeed: 1.18, range: 34, cost: 5, stars: 2, reqLp: 45, color: '#94a3b8', fxTier: 'special' },
+
+  // 3 Star
+  { id: 'c55', name: 'Alev Nişancısı', type: 'Uzak Menzil', baseHp: 840, baseDamage: 186, speed: 42, attackSpeed: 1.42, range: 178, cost: 5, stars: 3, reqLp: 80, color: '#f43f5e', fxTier: 'special' },
+
+  // New 5 Star Tank
+  { id: 'c56', name: 'Obsidyen Behemot', type: 'Tank', baseHp: 6680, baseDamage: 278, speed: 21, attackSpeed: 2.15, range: 44, cost: 9, stars: 5, reqLp: 340, color: '#334155', fxTier: 'special' },
+
+  // New 5 Characters (non-healer, non-5-star)
+  { id: 'c57', name: 'Kuzey Muhafızı', type: 'Tank', baseHp: 1720, baseDamage: 96, speed: 31, attackSpeed: 1.12, range: 32, cost: 3, stars: 1, reqLp: 20, color: '#94a3b8', fxTier: 'special' },
+  { id: 'c58', name: 'Çifte Hançer', type: 'Yakın Dövüş', baseHp: 1260, baseDamage: 142, speed: 57, attackSpeed: 1.48, range: 34, cost: 4, stars: 2, reqLp: 45, color: '#fb7185', fxTier: 'special' },
+  { id: 'c59', name: 'Rün Okçusu', type: 'Uzak Menzil', baseHp: 790, baseDamage: 172, speed: 43, attackSpeed: 1.34, range: 176, cost: 5, stars: 3, reqLp: 80, color: '#22d3ee', fxTier: 'special' },
+  { id: 'c60', name: 'Kule Yıkıcı', type: 'Tank', baseHp: 3840, baseDamage: 166, speed: 27, attackSpeed: 1.82, range: 38, cost: 6, stars: 4, reqLp: 190, color: '#6b7280', fxTier: 'special' },
+  { id: 'c61', name: 'Gök Mızrağı', type: 'Yakın Dövüş', baseHp: 2100, baseDamage: 236, speed: 60, attackSpeed: 1.36, range: 46, cost: 6, stars: 4, reqLp: 260, color: '#60a5fa', fxTier: 'special' },
+
+  // New 5 Characters (non-healer, non-5-star)
+  { id: 'c62', name: 'Orman Bekçisi', type: 'Yakın Dövüş', baseHp: 980, baseDamage: 92, speed: 51, attackSpeed: 1.3, range: 34, cost: 3, stars: 1, reqLp: 20, color: '#4ade80', fxTier: 'special' },
+  { id: 'c63', name: 'Demir Okçu', type: 'Uzak Menzil', baseHp: 640, baseDamage: 118, speed: 45, attackSpeed: 1.28, range: 166, cost: 4, stars: 2, reqLp: 45, color: '#0ea5e9', fxTier: 'special' },
+  { id: 'c64', name: 'Fırtına Savaşçısı', type: 'Yakın Dövüş', baseHp: 1680, baseDamage: 202, speed: 56, attackSpeed: 1.42, range: 38, cost: 5, stars: 3, reqLp: 80, color: '#38bdf8', fxTier: 'special' },
+  { id: 'c65', name: 'Çelik Devriye', type: 'Tank', baseHp: 3560, baseDamage: 154, speed: 26, attackSpeed: 1.75, range: 36, cost: 6, stars: 4, reqLp: 190, color: '#64748b', fxTier: 'special' },
+  { id: 'c66', name: 'Kum Fırtınası', type: 'Uzak Menzil', baseHp: 860, baseDamage: 214, speed: 44, attackSpeed: 1.46, range: 182, cost: 6, stars: 4, reqLp: 260, color: '#f59e0b', fxTier: 'special' },
+
+  // New 10 Characters
+  { id: 'c67', name: 'Sınır Neferi', type: 'Yakın Dövüş', baseHp: 920, baseDamage: 90, speed: 50, attackSpeed: 1.26, range: 34, cost: 3, stars: 1, reqLp: 0, color: '#fda4af', fxTier: 'special' },
+  { id: 'c68', name: 'Taş Avcısı', type: 'Uzak Menzil', baseHp: 520, baseDamage: 86, speed: 48, attackSpeed: 1.2, range: 150, cost: 3, stars: 1, reqLp: 20, color: '#67e8f9', fxTier: 'special' },
+  { id: 'c69', name: 'Demir Pençe', type: 'Yakın Dövüş', baseHp: 1360, baseDamage: 132, speed: 52, attackSpeed: 1.4, range: 36, cost: 4, stars: 2, reqLp: 45, color: '#f97316', fxTier: 'special' },
+  { id: 'c70', name: 'Mızrak Muhafız', type: 'Tank', baseHp: 2440, baseDamage: 116, speed: 30, attackSpeed: 1.2, range: 34, cost: 5, stars: 2, reqLp: 45, color: '#94a3b8', fxTier: 'special' },
+  { id: 'c71', name: 'Rüzgar Okçusu', type: 'Uzak Menzil', baseHp: 760, baseDamage: 154, speed: 46, attackSpeed: 1.32, range: 174, cost: 5, stars: 3, reqLp: 80, color: '#22d3ee', fxTier: 'special' },
+  { id: 'c72', name: 'Savaş Boğası', type: 'Tank', baseHp: 3320, baseDamage: 166, speed: 25, attackSpeed: 1.82, range: 38, cost: 6, stars: 3, reqLp: 130, color: '#9ca3af', fxTier: 'special' },
+  { id: 'c73', name: 'Gece Bıçağı', type: 'Yakın Dövüş', baseHp: 2140, baseDamage: 244, speed: 61, attackSpeed: 1.34, range: 38, cost: 6, stars: 4, reqLp: 190, color: '#a78bfa', fxTier: 'special' },
+  { id: 'c74', name: 'Volkan Nişancısı', type: 'Uzak Menzil', baseHp: 980, baseDamage: 232, speed: 42, attackSpeed: 1.44, range: 186, cost: 6, stars: 4, reqLp: 260, color: '#fb7185', fxTier: 'special' },
+  { id: 'c75', name: 'Kale Yıkıcı', type: 'Tank', baseHp: 4020, baseDamage: 180, speed: 24, attackSpeed: 1.9, range: 40, cost: 7, stars: 4, reqLp: 260, color: '#6b7280', fxTier: 'special' },
+  { id: 'c76', name: 'Yıldırım Muhafızı', type: 'Yakın Dövüş', baseHp: 2460, baseDamage: 286, speed: 58, attackSpeed: 1.36, range: 40, cost: 7, stars: 4, reqLp: 260, color: '#60a5fa', fxTier: 'special' },
+
+  // New 10 Characters (no 5-star, includes 2 healers)
+  { id: 'c77', name: 'Öncü Kılıç', type: 'Yakın Dövüş', baseHp: 960, baseDamage: 94, speed: 52, attackSpeed: 1.28, range: 34, cost: 3, stars: 1, reqLp: 0, color: '#fb7185', fxTier: 'special' },
+  { id: 'c78', name: 'Şifa Çırağı', type: 'Sıhhiyeci', baseHp: 520, baseDamage: -55, speed: 44, attackSpeed: 2.0, range: 108, cost: 3, stars: 1, reqLp: 20, color: '#f9a8d4', fxTier: 'special' },
+  { id: 'c79', name: 'Siper Okçusu', type: 'Uzak Menzil', baseHp: 690, baseDamage: 122, speed: 45, attackSpeed: 1.26, range: 168, cost: 4, stars: 2, reqLp: 45, color: '#22d3ee', fxTier: 'special' },
+  { id: 'c80', name: 'Bronz Kalkan', type: 'Tank', baseHp: 2520, baseDamage: 118, speed: 30, attackSpeed: 1.22, range: 34, cost: 5, stars: 2, reqLp: 45, color: '#94a3b8', fxTier: 'special' },
+  { id: 'c81', name: 'Mızrak Dansçısı', type: 'Yakın Dövüş', baseHp: 1420, baseDamage: 146, speed: 57, attackSpeed: 1.42, range: 42, cost: 4, stars: 2, reqLp: 45, color: '#f97316', fxTier: 'special' },
+  { id: 'c82', name: 'Kule Topçusu', type: 'Uzak Menzil', baseHp: 820, baseDamage: 176, speed: 41, attackSpeed: 1.34, range: 182, cost: 5, stars: 3, reqLp: 80, color: '#38bdf8', fxTier: 'special' },
+  { id: 'c83', name: 'Savaş Rahibi', type: 'Sıhhiyeci', baseHp: 720, baseDamage: -115, speed: 40, attackSpeed: 2.0, range: 118, cost: 5, stars: 3, reqLp: 130, color: '#f472b6', fxTier: 'special' },
+  { id: 'c84', name: 'Demir Yıkıcı', type: 'Tank', baseHp: 3560, baseDamage: 170, speed: 25, attackSpeed: 1.86, range: 38, cost: 6, stars: 3, reqLp: 130, color: '#64748b', fxTier: 'special' },
+  { id: 'c85', name: 'Gece Muhafızı', type: 'Yakın Dövüş', baseHp: 2220, baseDamage: 248, speed: 60, attackSpeed: 1.36, range: 39, cost: 6, stars: 4, reqLp: 190, color: '#a78bfa', fxTier: 'special' },
+  { id: 'c86', name: 'Kor Alevi', type: 'Uzak Menzil', baseHp: 1020, baseDamage: 238, speed: 43, attackSpeed: 1.46, range: 188, cost: 6, stars: 4, reqLp: 260, color: '#fb7185', fxTier: 'special' },
+
+  // New 5 Characters (no 5-star, no healer)
+  { id: 'c87', name: 'Sınır Korucusu', type: 'Yakın Dövüş', baseHp: 980, baseDamage: 98, speed: 53, attackSpeed: 1.3, range: 35, cost: 3, stars: 1, reqLp: 20, color: '#f43f5e', fxTier: 'special' },
+  { id: 'c88', name: 'Çelik Nişancı', type: 'Uzak Menzil', baseHp: 760, baseDamage: 136, speed: 45, attackSpeed: 1.3, range: 172, cost: 4, stars: 2, reqLp: 45, color: '#22d3ee', fxTier: 'special' },
+  { id: 'c89', name: 'Kalkan Yıkıcı', type: 'Tank', baseHp: 2940, baseDamage: 148, speed: 28, attackSpeed: 1.6, range: 36, cost: 5, stars: 3, reqLp: 80, color: '#64748b', fxTier: 'special' },
+  { id: 'c90', name: 'Fırtına Kılıcı', type: 'Yakın Dövüş', baseHp: 2260, baseDamage: 256, speed: 59, attackSpeed: 1.34, range: 39, cost: 6, stars: 4, reqLp: 190, color: '#60a5fa', fxTier: 'special' },
+  { id: 'c91', name: 'Lav Topçusu', type: 'Uzak Menzil', baseHp: 1080, baseDamage: 252, speed: 42, attackSpeed: 1.48, range: 190, cost: 6, stars: 4, reqLp: 260, color: '#fb923c', fxTier: 'special' },
+];
+
+const STAR_BALANCE: Record<number, { hp: number; damage: number }> = {
+  1: { hp: 1.1, damage: 1.08 },
+  2: { hp: 1.06, damage: 1.04 },
+  3: { hp: 1.0, damage: 1.0 },
+  4: { hp: 0.95, damage: 0.94 },
+  5: { hp: 0.9, damage: 0.9 },
+};
+
+const TYPE_BALANCE: Record<CharacterDef['type'], { hp: number; damage: number; speed: number }> = {
+  'Yakın Dövüş': { hp: 1.04, damage: 1.0, speed: 1.05 },
+  'Uzak Menzil': { hp: 0.95, damage: 1.08, speed: 1.0 },
+  Tank: { hp: 1.2, damage: 0.82, speed: 0.88 },
+  'Sıhhiyeci': { hp: 1.05, damage: 1.08, speed: 1.0 },
+};
+
+const roundStat = (value: number) => Math.max(1, Math.round(value));
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const SPEED_LIMITS: Record<CharacterDef['type'], { min: number; max: number }> = {
+  'Yakın Dövüş': { min: 36, max: 68 },
+  'Uzak Menzil': { min: 30, max: 54 },
+  Tank: { min: 20, max: 40 },
+  'Sıhhiyeci': { min: 30, max: 48 },
+};
+
+const RANGE_LIMITS: Record<CharacterDef['type'], { min: number; max: number }> = {
+  'Yakın Dövüş': { min: 26, max: 52 },
+  'Uzak Menzil': { min: 130, max: 200 },
+  Tank: { min: 24, max: 50 },
+  'Sıhhiyeci': { min: 95, max: 145 },
+};
+
+const ATTACK_SPEED_LIMITS: Record<CharacterDef['type'], { min: number; max: number }> = {
+  'Yakın Dövüş': { min: 1.0, max: 1.7 },
+  'Uzak Menzil': { min: 1.0, max: 2.0 },
+  Tank: { min: 0.8, max: 1.8 },
+  'Sıhhiyeci': { min: 1.5, max: 2.2 },
+};
+
+// Character unlock permission is league-gated by star tier.
+// LP only grants eligibility; characters still unlock from chests.
+const STAR_UNLOCK_LP: Record<number, number> = {
+  1: LEAGUES[1].minLp, // Taş
+  2: LEAGUES[2].minLp, // Bakır
+  3: LEAGUES[3].minLp, // Demir
+  4: LEAGUES[4].minLp, // Altın
+  5: LEAGUES[7].minLp, // Obsidyen
+};
+
+const applyBalancePass = (characters: CharacterDef[]): CharacterDef[] => {
+  return characters.map((char) => {
+    const star = STAR_BALANCE[char.stars] ?? { hp: 1, damage: 1 };
+    const type = TYPE_BALANCE[char.type];
+
+    let normalizedAttackSpeed = clamp(
+      char.attackSpeed,
+      ATTACK_SPEED_LIMITS[char.type].min,
+      ATTACK_SPEED_LIMITS[char.type].max
+    );
+
+    // Buff: low-HP ranged units attack a bit faster to stay relevant.
+    if (char.type === 'Uzak Menzil' && char.baseHp < 900) {
+      normalizedAttackSpeed = clamp(
+        normalizedAttackSpeed * 1.12,
+        ATTACK_SPEED_LIMITS[char.type].min,
+        ATTACK_SPEED_LIMITS[char.type].max
+      );
+    }
+
+    let normalizedRange = clamp(char.range, RANGE_LIMITS[char.type].min, RANGE_LIMITS[char.type].max);
+
+    // Targeted nerf: Oduncu range slightly reduced for fairer trades.
+    if (char.id === 'c3') {
+      normalizedRange = clamp(normalizedRange - 6, RANGE_LIMITS[char.type].min, RANGE_LIMITS[char.type].max);
+    }
+
+    return {
+      ...char,
+      reqLp: Math.max(char.reqLp, STAR_UNLOCK_LP[char.stars] ?? 0),
+      baseHp: roundStat(char.baseHp * star.hp * type.hp),
+      // Negative values are heal amount for Sıhhiyeci and stay negative.
+      baseDamage: Math.round(char.baseDamage * star.damage * type.damage),
+      speed: roundStat(clamp(char.speed * type.speed, SPEED_LIMITS[char.type].min, SPEED_LIMITS[char.type].max)),
+      range: roundStat(normalizedRange),
+      attackSpeed: Number(normalizedAttackSpeed.toFixed(2)),
+      // Nerf: tanks keep durability but deal lower tower damage for fair siege pacing.
+      towerDamageMultiplier: char.type === 'Tank' ? 0.86 : 1,
+      fxTier: char.fxTier ?? 'basic',
+    };
+  });
+};
+
+export const INITIAL_CHARACTERS: CharacterDef[] = applyBalancePass(RAW_CHARACTERS);
+
+export const UPGRADE_COSTS = [
+  { nextLevel: 2, tokens: 3, gold: 40 },
+  { nextLevel: 3, tokens: 5, gold: 70 },
+  { nextLevel: 4, tokens: 7, gold: 105 },
+  { nextLevel: 5, tokens: 9, gold: 145 },
+  { nextLevel: 6, tokens: 11, gold: 190 },
+  { nextLevel: 7, tokens: 13, gold: 240 },
+  { nextLevel: 8, tokens: 15, gold: 295 },
+];
+
+export const STAR_DROP_RATES = [
+  { stars: 1, chance: 40 },
+  { stars: 2, chance: 30 },
+  { stars: 3, chance: 17 },
+  { stars: 4, chance: 9 },
+  { stars: 5, chance: 4 },
+];
+
+export const STAR_WEIGHTS: Record<number, number> = {
+  1: 40,
+  2: 30,
+  3: 17,
+  4: 9,
+  5: 4,
+};
+
+const pickFromWeightedPool = (
+  weightedPool: Array<{ char: CharacterDef; weight: number }>
+) => {
+  const totalWeight = weightedPool.reduce((sum, item) => sum + item.weight, 0);
+  let roll = Math.random() * totalWeight;
+
+  for (const item of weightedPool) {
+    roll -= item.weight;
+    if (roll <= 0) {
+      return item.char;
+    }
+  }
+
+  return weightedPool[weightedPool.length - 1].char;
+};
+
+export const pickWeightedCharacter = () => {
+  const weightedPool = INITIAL_CHARACTERS.map((char) => ({
+    char,
+    weight: STAR_WEIGHTS[char.stars] ?? 1,
+  }));
+
+  return pickFromWeightedPool(weightedPool);
+};
+
+export const pickWeightedCharacterForOwned = (ownedCharacterIds: string[]) => {
+  const ownedSet = new Set(ownedCharacterIds);
+
+  // Mağaza kasalarında mevcut koleksiyona öncelik vererek karakter geliştirmeyi hızlandırır.
+  const weightedPool = INITIAL_CHARACTERS.map((char) => {
+    const baseWeight = STAR_WEIGHTS[char.stars] ?? 1;
+    const ownershipBoost = ownedSet.has(char.id) ? 3.5 : 1;
+    return {
+      char,
+      weight: baseWeight * ownershipBoost,
+    };
+  });
+
+  return pickFromWeightedPool(weightedPool);
+};
+
+export const EMOJI_COLLECTION = [
+  '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
+  '🙂', '🙃', '😉', '😍', '🥰', '😘', '😗', '😙', '😚', '😋',
+  '😛', '😜', '🤪', '😝', '🤨', '🧐', '🤓', '😎', '🤩', '🥳',
+  '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖',
+  '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '😳',
+  '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🫡',
+  '🤭', '🫢', '🤫', '🤥', '😶', '🫥', '😐', '🫤', '😬', '🙄',
+  '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵',
+  '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠',
+  '😈', '👿', '👹', '👺', '💀', '☠️', '👻', '👽', '🤖', '💩',
+];
